@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.dotnet/
+.nuget/
+.data/
+*.db
+*.db-shm
+*.db-wal
+*.user
+*.suo
+.DS_Store
+appsettings.Local.json
+**/appsettings.Local.json
