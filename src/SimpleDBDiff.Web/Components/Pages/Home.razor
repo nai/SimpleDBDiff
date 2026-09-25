@@ -1,7 +1,192 @@
-﻿@page "/"
+@page "/"
+@using Npgsql
+@inject ISchemaReader SchemaReader
+@inject IMigrationGenerator MigrationGenerator
+@inject ConnectionProfileStore ProfileStore
+@inject ILogger<Home> Logger
 
-<PageTitle>Home</PageTitle>
+<PageTitle>SimpleDBDiff</PageTitle>
 
-<h1>Hello, world!</h1>
+<MudText Typo="Typo.h4" Class="mb-1">Compare database schemas</MudText>
+<MudText Typo="Typo.body1" Class="mb-5">The left database is the source. The script changes the right database to match it. Scripts are generated for review only.</MudText>
 
-Welcome to your new app.
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6">Left · source</MudText>
+            <MudSelect T="string" Label="Saved profile" @bind-Value="Left.SelectedProfile" Class="mt-3">
+                @foreach (var profile in Profiles)
+                {
+                    <MudSelectItem T="string" Value="@profile.Name">@profile.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField T="string" Label="Profile name (for saving)" @bind-Value="Left.ProfileName" />
+            <MudGrid Class="mt-1">
+                <MudItem xs="8"><MudTextField T="string" Label="Host" @bind-Value="Left.Host" /></MudItem>
+                <MudItem xs="4"><MudNumericField T="int" Label="Port" @bind-Value="Left.Port" Min="1" Max="65535" /></MudItem>
+                <MudItem xs="6"><MudTextField T="string" Label="Database" @bind-Value="Left.Database" /></MudItem>
+                <MudItem xs="6"><MudTextField T="string" Label="Username" @bind-Value="Left.Username" /></MudItem>
+                <MudItem xs="12"><MudTextField T="string" Label="Password" @bind-Value="Left.Password" InputType="InputType.Password" /></MudItem>
+                <MudItem xs="12"><MudTextField T="string" Label="Vault passphrase (only to save or unlock a password)" @bind-Value="Left.Passphrase" InputType="InputType.Password" /></MudItem>
+            </MudGrid>
+            <MudCheckBox T="bool" Label="Save password encrypted" @bind-Value="Left.SavePassword" />
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Variant="Variant.Outlined" OnClick="() => LoadProfileAsync(Left)">Load profile</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="() => SaveProfileAsync(Left)">Save profile</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => LoadSchemaAsync(Left)">Load schema</MudButton>
+            </MudStack>
+            @if (Left.Error is not null) { <MudAlert Severity="Severity.Error" Class="mt-3">@Left.Error</MudAlert> }
+            @if (Left.Snapshot is not null) { <MudText Class="mt-3">@Left.Snapshot.Tables.Count tables loaded</MudText><MudText Typo="Typo.caption">@string.Join(", ", Left.Snapshot.Tables.Select(t => t.Key))</MudText> }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="6">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6">Right · target</MudText>
+            <MudSelect T="string" Label="Saved profile" @bind-Value="Right.SelectedProfile" Class="mt-3">
+                @foreach (var profile in Profiles)
+                {
+                    <MudSelectItem T="string" Value="@profile.Name">@profile.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField T="string" Label="Profile name (for saving)" @bind-Value="Right.ProfileName" />
+            <MudGrid Class="mt-1">
+                <MudItem xs="8"><MudTextField T="string" Label="Host" @bind-Value="Right.Host" /></MudItem>
+                <MudItem xs="4"><MudNumericField T="int" Label="Port" @bind-Value="Right.Port" Min="1" Max="65535" /></MudItem>
+                <MudItem xs="6"><MudTextField T="string" Label="Database" @bind-Value="Right.Database" /></MudItem>
+                <MudItem xs="6"><MudTextField T="string" Label="Username" @bind-Value="Right.Username" /></MudItem>
+                <MudItem xs="12"><MudTextField T="string" Label="Password" @bind-Value="Right.Password" InputType="InputType.Password" /></MudItem>
+                <MudItem xs="12"><MudTextField T="string" Label="Vault passphrase (only to save or unlock a password)" @bind-Value="Right.Passphrase" InputType="InputType.Password" /></MudItem>
+            </MudGrid>
+            <MudCheckBox T="bool" Label="Save password encrypted" @bind-Value="Right.SavePassword" />
+            <MudStack Row="true" Spacing="2" Class="mt-2">
+                <MudButton Variant="Variant.Outlined" OnClick="() => LoadProfileAsync(Right)">Load profile</MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="() => SaveProfileAsync(Right)">Save profile</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => LoadSchemaAsync(Right)">Load schema</MudButton>
+            </MudStack>
+            @if (Right.Error is not null) { <MudAlert Severity="Severity.Error" Class="mt-3">@Right.Error</MudAlert> }
+            @if (Right.Snapshot is not null) { <MudText Class="mt-3">@Right.Snapshot.Tables.Count tables loaded</MudText><MudText Typo="Typo.caption">@string.Join(", ", Right.Snapshot.Tables.Select(t => t.Key))</MudText> }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudStack Row="true" Spacing="2" Class="my-4">
+    <MudButton Variant="Variant.Outlined" OnClick="Swap">Swap source and target</MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" OnClick="CompareAsync">Compare and generate script</MudButton>
+    @if (Busy) { <MudProgressCircular Indeterminate="true" Size="Size.Small" /> }
+</MudStack>
+
+@if (Error is not null) { <MudAlert Severity="Severity.Error" Class="mb-4">@Error</MudAlert> }
+@if (Differences is not null)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.h6">Comparison · @Differences.Count(d => d.Kind != DifferenceKind.Equal) changes</MudText>
+        <MudStack Row="true" Spacing="2" Class="my-2">
+            <MudCheckBox T="bool" Label="Equal" @bind-Value="ShowEqual" />
+            <MudCheckBox T="bool" Label="Different" @bind-Value="ShowDifferent" />
+            <MudCheckBox T="bool" Label="Left only" @bind-Value="ShowLeftOnly" />
+            <MudCheckBox T="bool" Label="Right only" @bind-Value="ShowRightOnly" />
+        </MudStack>
+        <MudTable Items="@VisibleDifferences" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
+            <HeaderContent><MudTh>Object</MudTh><MudTh>Name</MudTh><MudTh>Status</MudTh><MudTh>Left · source</MudTh><MudTh>Right · target</MudTh></HeaderContent>
+            <RowTemplate Context="item"><MudTd DataLabel="Object">@item.ObjectType</MudTd><MudTd DataLabel="Name">@item.ObjectName</MudTd><MudTd DataLabel="Status">@item.Kind</MudTd><MudTd DataLabel="Left">@item.LeftDefinition</MudTd><MudTd DataLabel="Right">@item.RightDefinition</MudTd></RowTemplate>
+        </MudTable>
+    </MudPaper>
+    <MudPaper Class="pa-4" Elevation="2">
+        <MudText Typo="Typo.h6" Class="mb-2">PostgreSQL migration script · review only</MudText>
+        <MudTextField T="string" Value="@Script" Lines="20" ReadOnly="true" Variant="Variant.Outlined" FullWidth="true" />
+    </MudPaper>
+}
+
+@code {
+    private ConnectionInput Left = new();
+    private ConnectionInput Right = new();
+    private IReadOnlyList<ConnectionProfile> Profiles = [];
+    private IReadOnlyList<SchemaDifference>? Differences;
+    private string Script = "";
+    private string? Error;
+    private bool Busy;
+    private bool ShowEqual, ShowDifferent = true, ShowLeftOnly = true, ShowRightOnly = true;
+    private IEnumerable<SchemaDifference> VisibleDifferences => Differences?.Where(d => d.Kind switch
+    {
+        DifferenceKind.Equal => ShowEqual, DifferenceKind.Different => ShowDifferent,
+        DifferenceKind.LeftOnly => ShowLeftOnly, DifferenceKind.RightOnly => ShowRightOnly, _ => false
+    }) ?? [];
+
+    protected override async Task OnInitializedAsync() => Profiles = await ProfileStore.ListAsync();
+
+    private async Task LoadProfileAsync(ConnectionInput side)
+    {
+        try
+        {
+            var profile = Profiles.SingleOrDefault(p => p.Name == side.SelectedProfile)
+                ?? throw new ArgumentException("Choose a saved profile first.");
+            side.ProfileName = profile.Name;
+            side.Host = profile.Host; side.Port = profile.Port; side.Database = profile.Database; side.Username = profile.Username;
+            side.Password = ""; side.Snapshot = null; ClearComparison();
+            side.Password = profile.HasSavedPassword ? await ProfileStore.UnlockPasswordAsync(profile.Name, side.Passphrase) ?? "" : "";
+            side.SavePassword = profile.HasSavedPassword;
+            side.Error = null;
+        }
+        catch (ArgumentException ex) { side.Error = ex.Message; }
+    }
+
+    private async Task SaveProfileAsync(ConnectionInput side)
+    {
+        try
+        {
+            await ProfileStore.SaveAsync(new(side.ProfileName, side.Host, side.Port, side.Database, side.Username, side.SavePassword), side.Password, side.Passphrase);
+            Profiles = await ProfileStore.ListAsync(); side.SelectedProfile = side.ProfileName.Trim(); side.Error = null;
+        }
+        catch (ArgumentException ex) { side.Error = ex.Message; }
+        catch (Exception ex) { Logger.LogError(ex, "Failed to save connection profile"); side.Error = "Could not save the connection profile."; }
+    }
+
+    private async Task LoadSchemaAsync(ConnectionInput side)
+    {
+        side.Error = null; side.Snapshot = null; ClearComparison();
+        try
+        {
+            var connection = new NpgsqlConnectionStringBuilder { Host = side.Host, Port = side.Port, Database = side.Database, Username = side.Username, Password = side.Password, Timeout = 10, CommandTimeout = 30 };
+            side.Snapshot = await SchemaReader.LoadAsync(connection.ConnectionString);
+            Logger.LogInformation("Loaded {TableCount} tables from {Host}/{Database}", side.Snapshot.Tables.Count, side.Host, side.Database);
+        }
+        catch (Exception ex) when (ex is NpgsqlException or ArgumentException or TimeoutException or NotSupportedException)
+        {
+            Logger.LogWarning(ex, "Schema load failed for {Host}/{Database}", side.Host, side.Database);
+            side.Error = ex is NotSupportedException ? ex.Message : ex is PostgresException pg ? $"PostgreSQL error {pg.SqlState}: {pg.MessageText}" : "Could not connect or load schema. Check the connection details and database permissions.";
+        }
+    }
+
+    private async Task CompareAsync()
+    {
+        Busy = true; Error = null; ClearComparison();
+        try
+        {
+            await Task.WhenAll(LoadSchemaAsync(Left), LoadSchemaAsync(Right));
+            if (Left.Snapshot is null || Right.Snapshot is null) { Error = "Both schemas must load successfully before comparison."; return; }
+            Differences = SchemaComparer.Compare(Left.Snapshot, Right.Snapshot);
+            Script = MigrationGenerator.Generate(Left.Snapshot, Right.Snapshot);
+            Logger.LogInformation("Compared {LeftCount} source tables and {RightCount} target tables; found {ChangeCount} changes", Left.Snapshot.Tables.Count, Right.Snapshot.Tables.Count, Differences.Count(d => d.Kind != DifferenceKind.Equal));
+        }
+        catch (Exception ex) { Logger.LogError(ex, "Comparison or SQL generation failed"); Error = "Comparison or SQL generation failed. Review schema metadata and server logs."; }
+        finally { Busy = false; }
+    }
+
+    private void Swap() { (Left, Right) = (Right, Left); ClearComparison(); Error = null; }
+    private void ClearComparison() { Differences = null; Script = ""; }
+
+    private sealed class ConnectionInput
+    {
+        public string SelectedProfile { get; set; } = "";
+        public string ProfileName { get; set; } = "";
+        public string Host { get; set; } = "localhost";
+        public int Port { get; set; } = 5432;
+        public string Database { get; set; } = "";
+        public string Username { get; set; } = "postgres";
+        public string Password { get; set; } = "";
+        public string Passphrase { get; set; } = "";
+        public bool SavePassword { get; set; }
+        public SchemaSnapshot? Snapshot { get; set; }
+        public string? Error { get; set; }
+    }
+}
