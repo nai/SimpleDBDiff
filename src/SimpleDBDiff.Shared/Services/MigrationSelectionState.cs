@@ -23,6 +23,47 @@ public sealed class MigrationSelectionState
         SetAll(true);
     }
 
+    public HashSet<MigrationObjectKey> NeedsReview { get; } = [];
+
+    public SelectionCheckpoint Capture(SchemaSnapshot left, SchemaSnapshot right) => new(
+        _rows.Select(row => new SelectionEntry(ComparisonPresentation.ObjectKey(row), Fingerprint(row, left, right), IsSelected(row))).ToArray(),
+        _includedTables.ToArray());
+
+    public void Restore(SelectionCheckpoint checkpoint, SchemaSnapshot left, SchemaSnapshot right)
+    {
+        var previous = checkpoint.Entries.ToDictionary(e => e.Key);
+        _selected.Clear(); _includedTables.Clear(); NeedsReview.Clear();
+        foreach (var row in _rows)
+        {
+            var key = ComparisonPresentation.ObjectKey(row);
+            if (previous.TryGetValue(key, out var entry) && entry.Fingerprint == Fingerprint(row, left, right))
+            { if (entry.Selected) _selected.Add(key); }
+            else NeedsReview.Add(key);
+        }
+        foreach (var table in _members.Keys)
+        {
+            if (checkpoint.IncludedTables.Contains(table, StringComparer.Ordinal)) _includedTables.Add(table);
+            UpdateTable(table);
+        }
+    }
+
+    // Include dependency metadata as well as rendered definitions in refresh checks.
+    private static string Fingerprint(SchemaDifference row, SchemaSnapshot left, SchemaSnapshot right)
+    {
+        object? Metadata(SchemaSnapshot snapshot)
+        {
+            var table = snapshot.Tables.FirstOrDefault(t => t.Key == ComparisonPresentation.TableKey(row));
+            return row.ObjectType.Split(' ')[0] switch
+            {
+                "Column" => table?.Columns.FirstOrDefault(c => c.Name == row.ObjectName),
+                "Constraint" => table?.Constraints.FirstOrDefault(c => c.Name == row.ObjectName),
+                "Index" => table?.Indexes.FirstOrDefault(c => c.Name == row.ObjectName),
+                _ => table
+            };
+        }
+        return System.Text.Json.JsonSerializer.Serialize(new { Left = Metadata(left), Right = Metadata(right) });
+    }
+
     public int SelectedObjectCount => _members.Where(t => _includedTables.Contains(t.Key)).Sum(t => t.Value.Count(_selected.Contains));
     public int SelectedChangeCount => _rows.Count(r => r.Kind != DifferenceKind.Equal &&
         (r.ObjectType != "Table" || _members[r.ObjectName][0].Kind == SchemaObjectKind.Table) && _includedTables.Contains(ComparisonPresentation.TableKey(r)) && IsSelected(r));
@@ -61,3 +102,6 @@ public sealed class MigrationSelectionState
         if (_members[key].All(_selected.Contains)) _selected.Add(parent); else _selected.Remove(parent);
     }
 }
+
+public sealed record SelectionEntry(MigrationObjectKey Key, string Fingerprint, bool Selected);
+public sealed record SelectionCheckpoint(SelectionEntry[] Entries, string[] IncludedTables);
