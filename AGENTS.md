@@ -8,6 +8,7 @@ Only access files and directories within this repository. Do not follow symlinks
 
 - Build with .NET 11 Blazor and global interactive server rendering.
 - Use Fluent UI Blazor as the primary UI component library.
+- Write new user-facing text and technical documentation using ASD-STE100 principles. Use the official dictionary and rules to check formal compliance when available; otherwise, describe the result as STE-style rather than certified compliant.
 - Keep database-provider code separate from normalized schema models and comparison logic.
 - Treat the left connection as the source and the right connection as the target. Recheck direction when generating migration SQL, including after the user swaps sides.
 - Do not commit database passwords or other secrets.
