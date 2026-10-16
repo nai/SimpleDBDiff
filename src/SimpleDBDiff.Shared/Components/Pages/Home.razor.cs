@@ -77,6 +77,7 @@ public partial class Home
 
     private async Task LoadProfileAsync(ConnectionEditorState side)
     {
+        Busy = true;
         try
         {
             var profile = Profiles.SingleOrDefault(p => p.Name == side.SelectedProfile)
@@ -91,13 +92,15 @@ public partial class Home
         }
         catch (ArgumentException ex) { side.Error = ex.Message; }
         catch (Exception ex) { Logger.LogError(ex, "Failed to load connection profile"); side.Error = "Could not load the connection profile."; }
+        finally { Busy = false; }
     }
 
     private async Task OpenVaultAsync()
     {
+        Busy = true;
         try { await Vault.OpenAsync(VaultPassphrase); VaultPanel = false; VaultError = null; if (PendingSession is not null) await RetrieveSessionPasswordsAsync(); }
         catch (Exception ex) { VaultError = ex is ArgumentException ? ex.Message : "Could not open the vault."; Logger.LogWarning(ex, "Vault open failed"); }
-        finally { VaultPassphrase = ""; }
+        finally { VaultPassphrase = ""; Busy = false; }
     }
     private void CloseVault()
     {
@@ -105,10 +108,15 @@ public partial class Home
     }
     private async Task SaveAndConnectAsync(ConnectionEditorState side)
     {
-        await SaveProfileAsync(side);
-        if (side.Error is not null) return;
-        await LoadSingleAsync(side);
-        side.Notice = side.Error is null ? "Profile saved. Connected and schema loaded." : "Profile saved. Connection failed; see error below.";
+        Busy = true;
+        try
+        {
+            await SaveProfileAsync(side);
+            if (side.Error is not null) return;
+            await LoadSingleAsync(side);
+            side.Notice = side.Error is null ? "Profile saved. Connected and schema loaded." : "Profile saved. Connection failed; see error below.";
+        }
+        finally { Busy = false; }
     }
     private async Task TestAsync(ConnectionEditorState side)
     {

@@ -15,10 +15,16 @@
     <span class="direction-note">Left source → Right target</span>
     <FluentButton OnClick="() => SessionsOpen = !SessionsOpen" Disabled="Busy">Sessions</FluentButton>
     <span role="status">@SaveStatus</span>
-    @if (SaveFailed) { <FluentButton OnClick="RetrySave">Retry Save</FluentButton> }
+    @if (SaveFailed) { <FluentButton OnClick="RetrySave" Disabled="Saving">Retry Save</FluentButton> }
     <span role="status">@(Vault.IsOpen ? "Vault open" : "Vault locked")</span>
     <FluentButton Disabled="Busy" OnClick="() => VaultPanel = !VaultPanel">Open Vault</FluentButton>
     <FluentButton Disabled="@(!Vault.IsOpen || Busy)" OnClick="CloseVault">Close Vault</FluentButton>
+        <div class="command-actions">
+            <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@(Busy || !CanCompare)" OnClick="CompareAsync">Compare schemas</FluentButton>
+            <FluentButton Disabled="@(Busy || !CanCompare || Selection is null || Selection.SelectedObjectCount == 0)" OnClick="GenerateSql">Generate SQL</FluentButton>
+            <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Swap"><span class="swap-symbol" aria-hidden="true">⇄</span> Swap sides</FluentButton>
+            @if (Busy) { <FluentSpinner aria-label="Working" /> }
+        </div>
 </header>
 @if (SessionsOpen)
 {
@@ -68,15 +74,6 @@
         <ConnectionCard @key="Right" State="Right" IsSource="false" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Right)" OnSaveProfile="() => SaveAndConnectAsync(Right)" OnTest="() => TestAsync(Right)" VaultOpen="Vault.IsOpen" OnLoadSchema="() => LoadSingleAsync(Right)" OnConnectionChanged="() => ConnectionChanged(Right)" />
     </div>
 
-    <div class="command-bar">
-        <div class="command-actions">
-            <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@(Busy || !CanCompare)" OnClick="CompareAsync">@(Busy ? "Loading schemas…" : "Compare schemas")</FluentButton>
-            <FluentButton Disabled="@(Busy || !CanCompare || Selection is null || Selection.SelectedObjectCount == 0)" OnClick="GenerateSql">Generate SQL</FluentButton>
-            <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Swap"><span class="swap-symbol" aria-hidden="true">⇄</span> Swap sides</FluentButton>
-            @if (Busy) { <FluentSpinner aria-label="Loading schemas" /> }
-        </div>
-        <span class="direction-note">Left source <span aria-hidden="true">→</span> Right target</span>
-    </div>
     @if (Error is not null) { <div class="inline-message error workspace-error" role="alert">@Error</div> }
 
     <div class="comparison-workspace" aria-busy="@Busy">
@@ -97,8 +94,8 @@
             @if (Selection is not null)
             {
                 <div class="selection-tools table-selection-tools" aria-label="Table selection controls">
-                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(true)" Title="Include all tables; preserve object selections, including hidden results">Check all</FluentButton>
-                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(false)" Title="Skip all tables; preserve object selections, including hidden results">Uncheck all</FluentButton>
+                    <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="() => SetAllTables(true)" Title="Include all tables; preserve object selections, including hidden results">Check all</FluentButton>
+                    <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="() => SetAllTables(false)" Title="Skip all tables; preserve object selections, including hidden results">Uncheck all</FluentButton>
                     <span>All tables · filters only change visibility</span>
                 </div>
             }
@@ -116,7 +113,7 @@
                     <div class="table-selection-entry @(SelectedTable == table.Key ? "selected" : "")">
                         @if (Selection is not null)
                         {
-                            <FluentCheckbox Value="@Selection.TableState(table.Key)" ValueChanged="_ => ToggleTable(table.Key)" AriaLabel="@($"Include table {table.Key} in migration")" />
+                            <FluentCheckbox Disabled="Busy" Value="@Selection.TableState(table.Key)" ValueChanged="_ => ToggleTable(table.Key)" AriaLabel="@($"Include table {table.Key} in migration")" />
                         }
                         <button type="button" class="table-entry" aria-pressed="@(SelectedTable == table.Key)" @onclick="() => SelectTable(table.Key)">
                             <span class="table-entry-text"><strong>@table.Key</strong>
@@ -161,8 +158,8 @@
                             <div class="comparison-direction"><span><b>L</b> @Left.Database <small>source</small></span><span><b>R</b> @Right.Database <small>target</small></span></div>
                             <div class="selection-tools detail-selection-tools" aria-label="Detail selection controls">
                                 <span>Include in migration</span>
-                                <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllDetails(true)" Title="Check every object in this table, including hidden results">Check all</FluentButton>
-                                <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllDetails(false)" Title="Uncheck every object in this table, including hidden results">Uncheck all</FluentButton>
+                                <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="() => SetAllDetails(true)" Title="Check every object in this table, including hidden results">Check all</FluentButton>
+                                <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="() => SetAllDetails(false)" Title="Uncheck every object in this table, including hidden results">Uncheck all</FluentButton>
                             </div>
                             @if (Selection is not null && !Selection.TableState(SelectedTable))
                             {
@@ -176,7 +173,7 @@
                             {
                                 <div class="detail-grid-scroll">
                                     <FluentDataGrid TGridItem="SchemaDifference" Items="@SelectedRows.AsQueryable()" MultiLine="true" GridTemplateColumns="80px minmax(140px, 1fr) 112px minmax(0, 1.6fr) minmax(0, 1.6fr)" Class="schema-grid">
-                                        <TemplateColumn Title="Include" Context="row"><FluentCheckbox Value="@(Selection?.IsSelected(row) ?? false)" ValueChanged="(bool value) => SetObject(row, value)" AriaLabel="@($"Include {row.ObjectType.Split(' ')[0].ToLowerInvariant()} {row.ObjectName} in migration")" /></TemplateColumn>
+                                        <TemplateColumn Title="Include" Context="row"><FluentCheckbox Disabled="Busy" Value="@(Selection?.IsSelected(row) ?? false)" ValueChanged="(bool value) => SetObject(row, value)" AriaLabel="@($"Include {row.ObjectType.Split(' ')[0].ToLowerInvariant()} {row.ObjectName} in migration")" /></TemplateColumn>
                                         <TemplateColumn Title="Object" Context="row"><span class="object-name">@row.ObjectName</span>@if (Selection?.NeedsReview.Contains(ComparisonPresentation.ObjectKey(row)) == true) { <span class="review-marker">Review after refresh</span> }<span class="object-type">@row.ObjectType.Split(' ')[0]</span></TemplateColumn>
                                         <TemplateColumn Title="Status" Context="row"><span class="status-badge @ComparisonPresentation.StatusClass(row.Kind)">@ComparisonPresentation.StatusLabel(row.Kind)</span></TemplateColumn>
                                         <TemplateColumn Title="Left · source" Context="row"><code class="definition @(row.LeftDefinition is null ? "missing" : "")">@(row.LeftDefinition ?? "Not present")</code></TemplateColumn>

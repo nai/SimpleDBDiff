@@ -4,7 +4,7 @@
         <div class="connection-identity">
             <span class="eyebrow">@Title <span class="direction-label">@(IsSource ? "SOURCE" : "TARGET")</span></span>
             <strong>@(string.IsNullOrWhiteSpace(State.Database) ? "Choose a database" : State.Database)</strong>
-            <span class="connection-address">@(string.IsNullOrWhiteSpace(State.Database) ? "Configure a PostgreSQL connection" : $"{State.Host}:{State.Port} · {State.Username}")</span>
+            <span class="connection-address">@(State.RefreshedAt is not null ? $"Refreshed {State.RefreshedAt:g}" : string.IsNullOrWhiteSpace(State.Database) ? "Configure a PostgreSQL connection" : $"{State.Host}:{State.Port} · {State.Username}")</span>
         </div>
         <div class="connection-controls">
             @if (State.Snapshot is not null)
@@ -12,15 +12,16 @@
                 <span class="connection-status"><span class="status-dot"></span>@(State.IsStale ? "Out of date · reconnect" : $"Connected · {State.Snapshot.Tables.Count} tables")</span>
             }
             @if (State.Snapshot is null) { <span class="connection-status">Not connected</span> }
+            <div class="card-actions">
             @if (State.IsStale) { <FluentButton Disabled="Busy" OnClick="LoadSchema">Reconnect</FluentButton> }
             @if (State.Snapshot is not null && !State.IsStale)
             {
                 <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="LoadSchema">Refresh Schema</FluentButton>
-                <small>Refreshed @State.RefreshedAt?.ToString("g")</small>
             }
             <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Toggle" aria-expanded="@Expanded" aria-controls="@PanelId">
                 @(Expanded ? "Close settings" : "Configure")
             </FluentButton>
+            </div>
         </div>
     </div>
     @if (Expanded)

@@ -29,10 +29,11 @@ public partial class Home
         {
             next = next with { UpdatedAt = DateTimeOffset.UtcNow };
             await SessionStore.SaveAsync(next);
+            var savedSessions = await SessionStore.ListAsync();
             // Preserve any edits made while storage was writing; the next render saves them.
             ActiveSession = ActiveSession with { Name = next.Name, UpdatedAt = next.UpdatedAt };
             LastSavedPayload = JsonSerializer.Serialize(next); LastAttemptedPayload = null;
-            SaveStatus = "Saved"; SaveFailed = false; Sessions = await SessionStore.ListAsync();
+            SaveStatus = "Saved"; SaveFailed = false; Sessions = savedSessions;
         }
         catch (Exception ex) { Logger.LogError(ex, "Session autosave failed"); SaveStatus = "Session save failed. Retry to keep your changes."; SaveFailed = true; }
         finally { Saving = false; if (!Lifetime.IsCancellationRequested) StateHasChanged(); }
@@ -72,7 +73,7 @@ public partial class Home
         foreach (var side in new[] { Left, Right })
         {
             var profile = Profiles.FirstOrDefault(p => p.Name == side.SelectedProfile);
-            if (profile is not null && profile.HasSavedPassword && profile.Host == side.Host && profile.Port == side.Port && profile.Database == side.Database && profile.Username == side.Username)
+            if (string.IsNullOrEmpty(side.Password) && profile is not null && profile.HasSavedPassword && profile.Host == side.Host && profile.Port == side.Port && profile.Database == side.Database && profile.Username == side.Username)
                 side.Password = await ProfileStore.UnlockPasswordAsync(profile.Name) ?? "";
         }
     }
