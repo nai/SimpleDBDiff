@@ -144,3 +144,11 @@ table.schema-grid { min-width: 720px; width: 100%; font-size: 12px; }
 .sql-empty p { margin: 14px auto 22px; color: #777; max-width: 470px; line-height: 1.7; font-size: 13px; }
 table.schema-grid { min-width: 780px; }
 @media (max-width: 700px) { .command-bar .command-actions { flex-wrap: wrap; } }
+
+/* Compact workspace chrome; direction remains visible at every width. */
+.connection-summary { min-height: 76px; padding: 10px 14px; }
+.explorer-search { padding: 6px 12px; }
+.direction-note { display: inline; }
+.command-bar { flex-wrap: wrap; }
+.connection-controls { gap: 4px; }
+.workspace-page { padding-top: 16px; }

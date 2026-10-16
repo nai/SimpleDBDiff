@@ -17,6 +17,7 @@ public partial class Home
     private string Search = "";
     private string ActiveTab = "details";
     private bool Busy;
+    private bool FiltersOpen;
     private bool ShowEqual = true, ShowDifferent = true, ShowLeftOnly = true, ShowRightOnly = true;
     private readonly CancellationTokenSource Lifetime = new();
     private bool CanCompare => !string.IsNullOrWhiteSpace(Left.Database) && !string.IsNullOrWhiteSpace(Right.Database);

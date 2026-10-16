@@ -6,14 +6,9 @@
 @inject ConnectionProfileStore ProfileStore
 @inject ILogger<Home> Logger
 
-<PageTitle>Schema workspace · SimpleDBDiff</PageTitle>
+<PageTitle>SimpleDBDiff</PageTitle>
 
 <div class="workspace-page">
-    <div class="page-heading">
-        <div><p class="eyebrow">DATABASE TOOLS</p><h1>Schema workspace</h1><p class="page-description">Compare structure. Understand the differences. Plan your migration.</p></div>
-        <span class="review-label"><span class="status-dot"></span>Review mode</span>
-    </div>
-
     <div class="connections" aria-label="Database connections">
         <ConnectionCard @key="Left" State="Left" IsSource="true" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Left)" OnSaveProfile="() => SaveProfileAsync(Left)" OnLoadSchema="() => LoadSingleAsync(Left)" OnConnectionChanged="() => ConnectionChanged(Left)" />
         <ConnectionCard @key="Right" State="Right" IsSource="false" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Right)" OnSaveProfile="() => SaveProfileAsync(Right)" OnLoadSchema="() => LoadSingleAsync(Right)" OnConnectionChanged="() => ConnectionChanged(Right)" />
@@ -33,7 +28,10 @@
     <div class="comparison-workspace" aria-busy="@Busy">
         <aside class="object-explorer" aria-label="Table explorer">
             <div class="explorer-heading"><h2>Tables</h2><span class="count-badge">@TableEntries.Count</span></div>
-            <div class="explorer-search"><FluentTextInput Label="Find a table" Placeholder="Search schemas and tables" @bind-Value="Search" Immediate="true" Width="100%" TextInputType="TextInputType.Search" /></div>
+            <div class="explorer-search"><FluentTextInput AriaLabel="Find a table" Placeholder="Search schemas and tables" @bind-Value="Search" Immediate="true" Width="100%" TextInputType="TextInputType.Search" /></div>
+            <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => FiltersOpen = !FiltersOpen" aria-expanded="@FiltersOpen">Filters</FluentButton>
+            @if (FiltersOpen)
+            {
             <fieldset class="status-filters">
                 <legend>Show results</legend>
                 <FluentCheckbox Label="Equal" @bind-Value="ShowEqual" />
@@ -41,6 +39,7 @@
                 <FluentCheckbox Label="Left only" @bind-Value="ShowLeftOnly" />
                 <FluentCheckbox Label="Right only" @bind-Value="ShowRightOnly" />
             </fieldset>
+            }
             @if (Selection is not null)
             {
                 <div class="selection-tools table-selection-tools" aria-label="Table selection controls">
