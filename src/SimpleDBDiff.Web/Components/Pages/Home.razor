@@ -1,192 +1,111 @@
 @page "/"
 @using Npgsql
+@implements IDisposable
 @inject ISchemaReader SchemaReader
 @inject IMigrationGenerator MigrationGenerator
 @inject ConnectionProfileStore ProfileStore
 @inject ILogger<Home> Logger
 
-<PageTitle>SimpleDBDiff</PageTitle>
+<PageTitle>Schema workspace · SimpleDBDiff</PageTitle>
 
-<MudText Typo="Typo.h4" Class="mb-1">Compare database schemas</MudText>
-<MudText Typo="Typo.body1" Class="mb-5">The left database is the source. The script changes the right database to match it. Scripts are generated for review only.</MudText>
+<div class="workspace-page">
+    <div class="page-heading">
+        <div><p class="eyebrow">DATABASE TOOLS</p><h1>Schema workspace</h1><p class="page-description">Compare structure. Understand the differences. Plan your migration.</p></div>
+        <span class="review-label"><span class="status-dot"></span>Review mode</span>
+    </div>
 
-<MudGrid>
-    <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6">Left · source</MudText>
-            <MudSelect T="string" Label="Saved profile" @bind-Value="Left.SelectedProfile" Class="mt-3">
-                @foreach (var profile in Profiles)
+    <div class="connections" aria-label="Database connections">
+        <ConnectionCard @key="Left" State="Left" IsSource="true" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Left)" OnSaveProfile="() => SaveProfileAsync(Left)" OnLoadSchema="() => LoadSingleAsync(Left)" OnConnectionChanged="() => ConnectionChanged(Left)" />
+        <ConnectionCard @key="Right" State="Right" IsSource="false" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Right)" OnSaveProfile="() => SaveProfileAsync(Right)" OnLoadSchema="() => LoadSingleAsync(Right)" OnConnectionChanged="() => ConnectionChanged(Right)" />
+    </div>
+
+    <div class="command-bar">
+        <div class="command-actions">
+            <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@(Busy || !CanCompare)" OnClick="CompareAsync">@(Busy ? "Loading schemas…" : "Compare schemas")</FluentButton>
+            <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Swap"><span class="swap-symbol" aria-hidden="true">⇄</span> Swap sides</FluentButton>
+            @if (Busy) { <FluentSpinner aria-label="Loading schemas" /> }
+        </div>
+        <span class="direction-note">Left source <span aria-hidden="true">→</span> Right target</span>
+    </div>
+    @if (Error is not null) { <div class="inline-message error workspace-error" role="alert">@Error</div> }
+
+    <div class="comparison-workspace" aria-busy="@Busy">
+        <aside class="object-explorer" aria-label="Table explorer">
+            <div class="explorer-heading"><h2>Tables</h2><span class="count-badge">@TableEntries.Count</span></div>
+            <div class="explorer-search"><FluentTextInput Label="Find a table" Placeholder="Search schemas and tables" @bind-Value="Search" Immediate="true" Width="100%" TextInputType="TextInputType.Search" /></div>
+            <fieldset class="status-filters">
+                <legend>Show results</legend>
+                <FluentCheckbox Label="Equal" @bind-Value="ShowEqual" />
+                <FluentCheckbox Label="Different" @bind-Value="ShowDifferent" />
+                <FluentCheckbox Label="Left only" @bind-Value="ShowLeftOnly" />
+                <FluentCheckbox Label="Right only" @bind-Value="ShowRightOnly" />
+            </fieldset>
+            <div class="table-navigation">
+                @if (TableEntries.Count == 0)
                 {
-                    <MudSelectItem T="string" Value="@profile.Name">@profile.Name</MudSelectItem>
+                    <div class="explorer-empty"><span aria-hidden="true">▦</span><p>Your tables will appear here after loading a schema.</p></div>
                 }
-            </MudSelect>
-            <MudTextField T="string" Label="Profile name (for saving)" @bind-Value="Left.ProfileName" />
-            <MudGrid Class="mt-1">
-                <MudItem xs="8"><MudTextField T="string" Label="Host" @bind-Value="Left.Host" /></MudItem>
-                <MudItem xs="4"><MudNumericField T="int" Label="Port" @bind-Value="Left.Port" Min="1" Max="65535" /></MudItem>
-                <MudItem xs="6"><MudTextField T="string" Label="Database" @bind-Value="Left.Database" /></MudItem>
-                <MudItem xs="6"><MudTextField T="string" Label="Username" @bind-Value="Left.Username" /></MudItem>
-                <MudItem xs="12"><MudTextField T="string" Label="Password" @bind-Value="Left.Password" InputType="InputType.Password" /></MudItem>
-                <MudItem xs="12"><MudTextField T="string" Label="Vault passphrase (only to save or unlock a password)" @bind-Value="Left.Passphrase" InputType="InputType.Password" /></MudItem>
-            </MudGrid>
-            <MudCheckBox T="bool" Label="Save password encrypted" @bind-Value="Left.SavePassword" />
-            <MudStack Row="true" Spacing="2" Class="mt-2">
-                <MudButton Variant="Variant.Outlined" OnClick="() => LoadProfileAsync(Left)">Load profile</MudButton>
-                <MudButton Variant="Variant.Outlined" OnClick="() => SaveProfileAsync(Left)">Save profile</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => LoadSchemaAsync(Left)">Load schema</MudButton>
-            </MudStack>
-            @if (Left.Error is not null) { <MudAlert Severity="Severity.Error" Class="mt-3">@Left.Error</MudAlert> }
-            @if (Left.Snapshot is not null) { <MudText Class="mt-3">@Left.Snapshot.Tables.Count tables loaded</MudText><MudText Typo="Typo.caption">@string.Join(", ", Left.Snapshot.Tables.Select(t => t.Key))</MudText> }
-        </MudPaper>
-    </MudItem>
-    <MudItem xs="12" md="6">
-        <MudPaper Class="pa-4" Elevation="2">
-            <MudText Typo="Typo.h6">Right · target</MudText>
-            <MudSelect T="string" Label="Saved profile" @bind-Value="Right.SelectedProfile" Class="mt-3">
-                @foreach (var profile in Profiles)
+                else if (!VisibleTables.Any())
                 {
-                    <MudSelectItem T="string" Value="@profile.Name">@profile.Name</MudSelectItem>
+                    <p class="navigation-message">No tables match your search and filters.</p>
                 }
-            </MudSelect>
-            <MudTextField T="string" Label="Profile name (for saving)" @bind-Value="Right.ProfileName" />
-            <MudGrid Class="mt-1">
-                <MudItem xs="8"><MudTextField T="string" Label="Host" @bind-Value="Right.Host" /></MudItem>
-                <MudItem xs="4"><MudNumericField T="int" Label="Port" @bind-Value="Right.Port" Min="1" Max="65535" /></MudItem>
-                <MudItem xs="6"><MudTextField T="string" Label="Database" @bind-Value="Right.Database" /></MudItem>
-                <MudItem xs="6"><MudTextField T="string" Label="Username" @bind-Value="Right.Username" /></MudItem>
-                <MudItem xs="12"><MudTextField T="string" Label="Password" @bind-Value="Right.Password" InputType="InputType.Password" /></MudItem>
-                <MudItem xs="12"><MudTextField T="string" Label="Vault passphrase (only to save or unlock a password)" @bind-Value="Right.Passphrase" InputType="InputType.Password" /></MudItem>
-            </MudGrid>
-            <MudCheckBox T="bool" Label="Save password encrypted" @bind-Value="Right.SavePassword" />
-            <MudStack Row="true" Spacing="2" Class="mt-2">
-                <MudButton Variant="Variant.Outlined" OnClick="() => LoadProfileAsync(Right)">Load profile</MudButton>
-                <MudButton Variant="Variant.Outlined" OnClick="() => SaveProfileAsync(Right)">Save profile</MudButton>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => LoadSchemaAsync(Right)">Load schema</MudButton>
-            </MudStack>
-            @if (Right.Error is not null) { <MudAlert Severity="Severity.Error" Class="mt-3">@Right.Error</MudAlert> }
-            @if (Right.Snapshot is not null) { <MudText Class="mt-3">@Right.Snapshot.Tables.Count tables loaded</MudText><MudText Typo="Typo.caption">@string.Join(", ", Right.Snapshot.Tables.Select(t => t.Key))</MudText> }
-        </MudPaper>
-    </MudItem>
-</MudGrid>
+                @foreach (var table in VisibleTables)
+                {
+                    <button type="button" class="table-entry @(SelectedTable == table.Key ? "selected" : "")" aria-pressed="@(SelectedTable == table.Key)" @onclick="() => SelectTable(table.Key)">
+                        <span class="table-glyph" aria-hidden="true">▦</span>
+                        <span class="table-entry-text"><strong>@table.Key</strong><span>@ComparisonPresentation.StatusLabel(table.Kind)</span></span>
+                        <span class="object-indicator @ComparisonPresentation.StatusClass(table.Kind)" aria-hidden="true"></span>
+                    </button>
+                }
+            </div>
+            <div class="explorer-footer">@VisibleTables.Count() of @TableEntries.Count tables</div>
+        </aside>
 
-<MudStack Row="true" Spacing="2" Class="my-4">
-    <MudButton Variant="Variant.Outlined" OnClick="Swap">Swap source and target</MudButton>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" OnClick="CompareAsync">Compare and generate script</MudButton>
-    @if (Busy) { <MudProgressCircular Indeterminate="true" Size="Size.Small" /> }
-</MudStack>
-
-@if (Error is not null) { <MudAlert Severity="Severity.Error" Class="mb-4">@Error</MudAlert> }
-@if (Differences is not null)
-{
-    <MudPaper Class="pa-4 mb-4" Elevation="2">
-        <MudText Typo="Typo.h6">Comparison · @Differences.Count(d => d.Kind != DifferenceKind.Equal) changes</MudText>
-        <MudStack Row="true" Spacing="2" Class="my-2">
-            <MudCheckBox T="bool" Label="Equal" @bind-Value="ShowEqual" />
-            <MudCheckBox T="bool" Label="Different" @bind-Value="ShowDifferent" />
-            <MudCheckBox T="bool" Label="Left only" @bind-Value="ShowLeftOnly" />
-            <MudCheckBox T="bool" Label="Right only" @bind-Value="ShowRightOnly" />
-        </MudStack>
-        <MudTable Items="@VisibleDifferences" Dense="true" Hover="true" Breakpoint="Breakpoint.Sm">
-            <HeaderContent><MudTh>Object</MudTh><MudTh>Name</MudTh><MudTh>Status</MudTh><MudTh>Left · source</MudTh><MudTh>Right · target</MudTh></HeaderContent>
-            <RowTemplate Context="item"><MudTd DataLabel="Object">@item.ObjectType</MudTd><MudTd DataLabel="Name">@item.ObjectName</MudTd><MudTd DataLabel="Status">@item.Kind</MudTd><MudTd DataLabel="Left">@item.LeftDefinition</MudTd><MudTd DataLabel="Right">@item.RightDefinition</MudTd></RowTemplate>
-        </MudTable>
-    </MudPaper>
-    <MudPaper Class="pa-4" Elevation="2">
-        <MudText Typo="Typo.h6" Class="mb-2">PostgreSQL migration script · review only</MudText>
-        <MudTextField T="string" Value="@Script" Lines="20" ReadOnly="true" Variant="Variant.Outlined" FullWidth="true" />
-    </MudPaper>
-}
-
-@code {
-    private ConnectionInput Left = new();
-    private ConnectionInput Right = new();
-    private IReadOnlyList<ConnectionProfile> Profiles = [];
-    private IReadOnlyList<SchemaDifference>? Differences;
-    private string Script = "";
-    private string? Error;
-    private bool Busy;
-    private bool ShowEqual, ShowDifferent = true, ShowLeftOnly = true, ShowRightOnly = true;
-    private IEnumerable<SchemaDifference> VisibleDifferences => Differences?.Where(d => d.Kind switch
-    {
-        DifferenceKind.Equal => ShowEqual, DifferenceKind.Different => ShowDifferent,
-        DifferenceKind.LeftOnly => ShowLeftOnly, DifferenceKind.RightOnly => ShowRightOnly, _ => false
-    }) ?? [];
-
-    protected override async Task OnInitializedAsync() => Profiles = await ProfileStore.ListAsync();
-
-    private async Task LoadProfileAsync(ConnectionInput side)
-    {
-        try
-        {
-            var profile = Profiles.SingleOrDefault(p => p.Name == side.SelectedProfile)
-                ?? throw new ArgumentException("Choose a saved profile first.");
-            side.ProfileName = profile.Name;
-            side.Host = profile.Host; side.Port = profile.Port; side.Database = profile.Database; side.Username = profile.Username;
-            side.Password = ""; side.Snapshot = null; ClearComparison();
-            side.Password = profile.HasSavedPassword ? await ProfileStore.UnlockPasswordAsync(profile.Name, side.Passphrase) ?? "" : "";
-            side.SavePassword = profile.HasSavedPassword;
-            side.Error = null;
-        }
-        catch (ArgumentException ex) { side.Error = ex.Message; }
-    }
-
-    private async Task SaveProfileAsync(ConnectionInput side)
-    {
-        try
-        {
-            await ProfileStore.SaveAsync(new(side.ProfileName, side.Host, side.Port, side.Database, side.Username, side.SavePassword), side.Password, side.Passphrase);
-            Profiles = await ProfileStore.ListAsync(); side.SelectedProfile = side.ProfileName.Trim(); side.Error = null;
-        }
-        catch (ArgumentException ex) { side.Error = ex.Message; }
-        catch (Exception ex) { Logger.LogError(ex, "Failed to save connection profile"); side.Error = "Could not save the connection profile."; }
-    }
-
-    private async Task LoadSchemaAsync(ConnectionInput side)
-    {
-        side.Error = null; side.Snapshot = null; ClearComparison();
-        try
-        {
-            var connection = new NpgsqlConnectionStringBuilder { Host = side.Host, Port = side.Port, Database = side.Database, Username = side.Username, Password = side.Password, Timeout = 10, CommandTimeout = 30 };
-            side.Snapshot = await SchemaReader.LoadAsync(connection.ConnectionString);
-            Logger.LogInformation("Loaded {TableCount} tables from {Host}/{Database}", side.Snapshot.Tables.Count, side.Host, side.Database);
-        }
-        catch (Exception ex) when (ex is NpgsqlException or ArgumentException or TimeoutException or NotSupportedException)
-        {
-            Logger.LogWarning(ex, "Schema load failed for {Host}/{Database}", side.Host, side.Database);
-            side.Error = ex is NotSupportedException ? ex.Message : ex is PostgresException pg ? $"PostgreSQL error {pg.SqlState}: {pg.MessageText}" : "Could not connect or load schema. Check the connection details and database permissions.";
-        }
-    }
-
-    private async Task CompareAsync()
-    {
-        Busy = true; Error = null; ClearComparison();
-        try
-        {
-            await Task.WhenAll(LoadSchemaAsync(Left), LoadSchemaAsync(Right));
-            if (Left.Snapshot is null || Right.Snapshot is null) { Error = "Both schemas must load successfully before comparison."; return; }
-            Differences = SchemaComparer.Compare(Left.Snapshot, Right.Snapshot);
-            Script = MigrationGenerator.Generate(Left.Snapshot, Right.Snapshot);
-            Logger.LogInformation("Compared {LeftCount} source tables and {RightCount} target tables; found {ChangeCount} changes", Left.Snapshot.Tables.Count, Right.Snapshot.Tables.Count, Differences.Count(d => d.Kind != DifferenceKind.Equal));
-        }
-        catch (Exception ex) { Logger.LogError(ex, "Comparison or SQL generation failed"); Error = "Comparison or SQL generation failed. Review schema metadata and server logs."; }
-        finally { Busy = false; }
-    }
-
-    private void Swap() { (Left, Right) = (Right, Left); ClearComparison(); Error = null; }
-    private void ClearComparison() { Differences = null; Script = ""; }
-
-    private sealed class ConnectionInput
-    {
-        public string SelectedProfile { get; set; } = "";
-        public string ProfileName { get; set; } = "";
-        public string Host { get; set; } = "localhost";
-        public int Port { get; set; } = 5432;
-        public string Database { get; set; } = "";
-        public string Username { get; set; } = "postgres";
-        public string Password { get; set; } = "";
-        public string Passphrase { get; set; } = "";
-        public bool SavePassword { get; set; }
-        public SchemaSnapshot? Snapshot { get; set; }
-        public string? Error { get; set; }
-    }
-}
+        <section class="comparison-panel" aria-label="Schema comparison">
+            @if (Rows is null)
+            {
+                <div class="empty-workspace">
+                    <div class="empty-illustration" aria-hidden="true"><span>▦</span><span class="empty-arrow">⇄</span><span>▦</span></div>
+                    <p class="eyebrow">A CLEAR VIEW OF YOUR SCHEMA</p>
+                    <h2>Start with two databases</h2>
+                    <p>Choose a source and a target, then compare their tables, columns, constraints, and indexes.</p>
+                    <div class="setup-steps"><span><b>1</b> Configure connections</span><span><b>2</b> Compare schemas</span><span><b>3</b> Review migration SQL</span></div>
+                    <div class="empty-tip">The source is the reference. Generated SQL brings the target into line with it.</div>
+                </div>
+            }
+            else
+            {
+                <FluentTabs @bind-ActiveTabId="ActiveTab" Class="workspace-tabs">
+                    <FluentTab Id="details" Header="Schema details">
+                        <div class="detail-heading"><div><p class="eyebrow">TABLE COMPARISON</p><h2>@(SelectedTable ?? "Select a table")</h2></div><span class="status-badge @ComparisonPresentation.StatusClass(SelectedKind)">@ComparisonPresentation.StatusLabel(SelectedKind)</span></div>
+                        @if (SelectedTable is not null)
+                        {
+                            <div class="comparison-direction"><span><b>L</b> @Left.Database <small>source</small></span><span><b>R</b> @Right.Database <small>target</small></span></div>
+                            @if (!SelectedRows.Any())
+                            {
+                                <div class="detail-empty">No objects match the selected status filters. Enable another result type to see more.</div>
+                            }
+                            else
+                            {
+                                <div class="detail-grid-scroll">
+                                    <FluentDataGrid TGridItem="SchemaDifference" Items="@SelectedRows.AsQueryable()" MultiLine="true" GridTemplateColumns="minmax(140px, 1fr) 100px minmax(0, 1.6fr) minmax(0, 1.6fr)" Class="schema-grid">
+                                        <TemplateColumn Title="Object" Context="row"><span class="object-name">@row.ObjectName</span><span class="object-type">@row.ObjectType.Split(' ')[0]</span></TemplateColumn>
+                                        <TemplateColumn Title="Status" Context="row"><span class="status-badge @ComparisonPresentation.StatusClass(row.Kind)">@ComparisonPresentation.StatusLabel(row.Kind)</span></TemplateColumn>
+                                        <TemplateColumn Title="Left · source" Context="row"><code class="definition @(row.LeftDefinition is null ? "missing" : "")">@(row.LeftDefinition ?? "Not present")</code></TemplateColumn>
+                                        <TemplateColumn Title="Right · target" Context="row"><code class="definition @(row.RightDefinition is null ? "missing" : "")">@(row.RightDefinition ?? "Not present")</code></TemplateColumn>
+                                    </FluentDataGrid>
+                                </div>
+                            }
+                        }
+                    </FluentTab>
+                    <FluentTab Id="sql" Header="Migration SQL">
+                        <div class="detail-heading"><div><p class="eyebrow">POSTGRESQL SCRIPT</p><h2>Source → target</h2></div><a class="download-link" href="@ScriptDownload" download="migration.sql">Download .sql <span aria-hidden="true">↓</span></a></div>
+                        <div class="script-note">Review before running. This script can drop objects or alter data types. The application does not execute it.</div>
+                        <pre class="sql-editor" tabindex="0" aria-label="Read-only PostgreSQL migration script"><code>@Script</code></pre>
+                    </FluentTab>
+                </FluentTabs>
+                <div class="comparison-summary" role="status"><span><span class="status-dot"></span>Comparison complete</span><span>@ChangeCount object changes · @TableEntries.Count tables</span></div>
+            }
+        </section>
+    </div>
+</div>

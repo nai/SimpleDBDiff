@@ -1,0 +1,80 @@
+<section class="connection-card @(IsSource ? "source" : "target")" aria-label="@Title connection">
+    <div class="connection-summary">
+        <span class="connection-symbol" aria-hidden="true">@(IsSource ? "L" : "R")</span>
+        <div class="connection-identity">
+            <span class="eyebrow">@Title <span class="direction-label">@(IsSource ? "SOURCE" : "TARGET")</span></span>
+            <strong>@(string.IsNullOrWhiteSpace(State.Database) ? "Choose a database" : State.Database)</strong>
+            <span class="connection-address">@(string.IsNullOrWhiteSpace(State.Database) ? "Configure a PostgreSQL connection" : $"{State.Host}:{State.Port} · {State.Username}")</span>
+        </div>
+        <div class="connection-controls">
+            @if (State.Snapshot is not null)
+            {
+                <span class="connection-status"><span class="status-dot"></span>@State.Snapshot.Tables.Count tables</span>
+            }
+            <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Toggle" aria-expanded="@Expanded" aria-controls="@PanelId">
+                @(Expanded ? "Close settings" : "Configure")
+            </FluentButton>
+        </div>
+    </div>
+    @if (Expanded)
+    {
+        <div class="connection-editor" id="@PanelId">
+            <div class="profile-row">
+                <FluentSelect TOption="string" TValue="string" Label="Saved profile" Placeholder="Choose a profile" Items="@Profiles.Select(p => p.Name)" @bind-Value="State.SelectedProfile" Disabled="Busy" Width="100%" />
+                <FluentButton Disabled="@(Busy || string.IsNullOrEmpty(State.SelectedProfile))" OnClick="LoadProfile">Load profile</FluentButton>
+            </div>
+            <div class="connection-fields">
+                <FluentTextInput Label="Host" @bind-Value="State.Host" @bind-Value:after="Changed" Disabled="Busy" Width="100%" />
+                <FluentNumberInput TValue="int" Label="Port" @bind-Value="State.Port" @bind-Value:after="Changed" Min="1" Max="65535" Disabled="Busy" Width="100%" />
+                <FluentTextInput Label="Database" @bind-Value="State.Database" @bind-Value:after="Changed" Disabled="Busy" Width="100%" />
+                <FluentTextInput Label="Username" @bind-Value="State.Username" @bind-Value:after="Changed" Disabled="Busy" Width="100%" />
+                <div class="full-field"><FluentTextInput Label="Password" TextInputType="TextInputType.Password" @bind-Value="State.Password" @bind-Value:after="Changed" Disabled="Busy" AutoComplete="off" Width="100%" /></div>
+            </div>
+            <details class="profile-settings">
+                <summary>Save connection profile</summary>
+                <div class="profile-fields">
+                    <FluentTextInput Label="Profile name" @bind-Value="State.ProfileName" Disabled="Busy" Width="100%" />
+                    <FluentCheckbox Label="Save password encrypted" @bind-Value="State.SavePassword" Disabled="Busy" />
+                    <p class="field-hint">Passwords stay in this session unless you choose to save them.</p>
+                </div>
+            </details>
+            <FluentTextInput Label="Vault passphrase" TextInputType="TextInputType.Password" @bind-Value="State.Passphrase" Disabled="Busy" AutoComplete="off" Width="100%" />
+            <p class="field-hint">Needed only to save or unlock an encrypted password.</p>
+            <div class="editor-actions">
+                <FluentButton Disabled="Busy" OnClick="SaveProfile">Save profile</FluentButton>
+                <FluentButton Appearance="ButtonAppearance.Primary" Disabled="Busy" OnClick="LoadSchema">Load schema</FluentButton>
+            </div>
+        </div>
+    }
+    @if (State.Error is not null)
+    {
+        <div class="inline-message error" role="alert">@State.Error</div>
+    }
+    @if (State.Notice is not null)
+    {
+        <div class="inline-message success" role="status">@State.Notice</div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ConnectionEditorState State { get; set; } = default!;
+    [Parameter] public bool IsSource { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public IReadOnlyList<ConnectionProfile> Profiles { get; set; } = [];
+    [Parameter] public EventCallback OnLoadProfile { get; set; }
+    [Parameter] public EventCallback OnSaveProfile { get; set; }
+    [Parameter] public EventCallback OnLoadSchema { get; set; }
+    [Parameter] public EventCallback OnConnectionChanged { get; set; }
+    private bool Expanded;
+    private string Title => IsSource ? "Left database" : "Right database";
+    private string PanelId => IsSource ? "source-settings" : "target-settings";
+    private void Toggle() => Expanded = !Expanded;
+    private Task Changed() => OnConnectionChanged.InvokeAsync();
+    private Task LoadProfile() => OnLoadProfile.InvokeAsync();
+    private Task SaveProfile() => OnSaveProfile.InvokeAsync();
+    private async Task LoadSchema()
+    {
+        await OnLoadSchema.InvokeAsync();
+        if (State.Snapshot is not null) Expanded = false;
+    }
+}

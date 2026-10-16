@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\SimpleDBDiff.Core\SimpleDBDiff.Core.csproj" />
     <ProjectReference Include="..\..\src\SimpleDBDiff.Postgres\SimpleDBDiff.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\SimpleDBDiff.Web\SimpleDBDiff.Web.csproj" />
   </ItemGroup>
 
 </Project>

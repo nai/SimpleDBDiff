@@ -9,5 +9,6 @@
 *.user
 *.suo
 .DS_Store
+.artifacts/
 appsettings.Local.json
 **/appsettings.Local.json

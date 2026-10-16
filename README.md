@@ -1,6 +1,6 @@
 # SimpleDBDiff
 
-A .NET 11 Blazor Web App for comparing PostgreSQL table schemas. The entire UI uses interactive server rendering and MudBlazor. The left connection is the source; generated SQL changes the right connection to match it. SQL is displayed for review and is never executed by the app.
+A .NET 11 Blazor Web App for comparing PostgreSQL table schemas. The entire UI uses interactive server rendering and Fluent UI Blazor. The left connection is the source; generated SQL changes the right connection to match it. SQL is displayed for review and is never executed by the app.
 
 ## Run
 
@@ -12,6 +12,10 @@ dotnet run --project src/SimpleDBDiff.Web
 ```
 
 The local launch profile uses HTTP and the app has no authentication, as requested for Stage 1. Bind it to localhost and avoid exposing it to other machines. Enter both database connections in the UI. Profiles are saved in `src/SimpleDBDiff.Web/.data/profiles.db`, which Git ignores. Saving a password is optional; when enabled, it is encrypted with AES-GCM using a key derived from the vault passphrase. The passphrase is never persisted and is needed to unlock a saved password. Blazor's own data-protection keys also stay in this ignored `.data` directory.
+
+## Workspace
+
+Configure the left source and right target using the expandable connection panels. Load a schema to browse its table list, then use **Compare schemas** to refresh both sides and generate SQL. The table explorer supports search and independent result filters. Select a table to see side-by-side definitions in **Schema details**, or open **Migration SQL** to review and download the full script. Swapping sides clears the previous comparison so the next script follows the new direction.
 
 ## Stage 1 behavior
 
