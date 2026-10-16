@@ -4,7 +4,9 @@
     --brand: #0f6cbd; --muted: #707070; --border: #e4e4e4; --surface: #fff;
 }
 * { box-sizing: border-box; }
-body { margin: 0; }
+/* Fluent's base styles lock body to the viewport. Let this document grow and
+   scroll, while its more specific dialog scroll lock can still take effect. */
+html body { margin: 0; height: auto; min-height: 100dvh; overflow: visible; }
 a { color: var(--brand); }
 button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
