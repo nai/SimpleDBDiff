@@ -4,14 +4,31 @@
 @inject ISchemaReader SchemaReader
 @inject IMigrationGenerator MigrationGenerator
 @inject ConnectionProfileStore ProfileStore
+@inject PasswordVault Vault
 @inject ILogger<Home> Logger
 
 <PageTitle>SimpleDBDiff</PageTitle>
 
+<header class="app-header">
+    <a class="brand" href="/">SimpleDBDiff</a>
+    <span class="direction-note">Left source → Right target</span>
+    <span role="status">@(Vault.IsOpen ? "Vault open" : "Vault locked")</span>
+    <FluentButton Disabled="Busy" OnClick="() => VaultPanel = !VaultPanel">Open Vault</FluentButton>
+    <FluentButton Disabled="@(!Vault.IsOpen || Busy)" OnClick="CloseVault">Close Vault</FluentButton>
+</header>
+@if (VaultPanel)
+{
+    <div class="vault-panel">
+        <FluentTextInput Label="Shared vault passphrase" TextInputType="TextInputType.Password" @bind-Value="VaultPassphrase" AutoComplete="off" />
+        <FluentButton OnClick="OpenVaultAsync" Disabled="@(Busy || Vault.IsOpen)">Open or create vault</FluentButton>
+        <p>One passphrase protects all saved passwords. A new vault is created on first use.</p>
+        @if (VaultError is not null) { <p role="alert">@VaultError</p> }
+    </div>
+}
 <div class="workspace-page">
     <div class="connections" aria-label="Database connections">
-        <ConnectionCard @key="Left" State="Left" IsSource="true" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Left)" OnSaveProfile="() => SaveProfileAsync(Left)" OnLoadSchema="() => LoadSingleAsync(Left)" OnConnectionChanged="() => ConnectionChanged(Left)" />
-        <ConnectionCard @key="Right" State="Right" IsSource="false" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Right)" OnSaveProfile="() => SaveProfileAsync(Right)" OnLoadSchema="() => LoadSingleAsync(Right)" OnConnectionChanged="() => ConnectionChanged(Right)" />
+        <ConnectionCard @key="Left" State="Left" IsSource="true" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Left)" OnSaveProfile="() => SaveAndConnectAsync(Left)" OnTest="() => TestAsync(Left)" VaultOpen="Vault.IsOpen" OnLoadSchema="() => LoadSingleAsync(Left)" OnConnectionChanged="() => ConnectionChanged(Left)" />
+        <ConnectionCard @key="Right" State="Right" IsSource="false" Profiles="Profiles" Busy="Busy" OnLoadProfile="() => LoadProfileAsync(Right)" OnSaveProfile="() => SaveAndConnectAsync(Right)" OnTest="() => TestAsync(Right)" VaultOpen="Vault.IsOpen" OnLoadSchema="() => LoadSingleAsync(Right)" OnConnectionChanged="() => ConnectionChanged(Right)" />
     </div>
 
     <div class="command-bar">

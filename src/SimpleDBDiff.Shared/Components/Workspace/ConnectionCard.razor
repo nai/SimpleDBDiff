@@ -9,7 +9,12 @@
         <div class="connection-controls">
             @if (State.Snapshot is not null)
             {
-                <span class="connection-status"><span class="status-dot"></span>@State.Snapshot.Tables.Count tables</span>
+                <span class="connection-status"><span class="status-dot"></span>@(State.IsStale ? "Out of date · reconnect" : $"Connected · {State.Snapshot.Tables.Count} tables")</span>
+            }
+            @if (State.Snapshot is not null && !State.IsStale)
+            {
+                <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="LoadSchema">Refresh Schema</FluentButton>
+                <small>Refreshed @State.RefreshedAt?.ToString("g")</small>
             }
             <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Toggle" aria-expanded="@Expanded" aria-controls="@PanelId">
                 @(Expanded ? "Close settings" : "Configure")
@@ -28,21 +33,20 @@
                 <FluentNumberInput TValue="int" Label="Port" @bind-Value="State.Port" @bind-Value:after="Changed" Min="1" Max="65535" Disabled="Busy" Width="100%" />
                 <FluentTextInput Label="Database" @bind-Value="State.Database" @bind-Value:after="Changed" Disabled="Busy" Width="100%" />
                 <FluentTextInput Label="Username" @bind-Value="State.Username" @bind-Value:after="Changed" Disabled="Busy" Width="100%" />
-                <div class="full-field"><FluentTextInput Label="Password" TextInputType="TextInputType.Password" @bind-Value="State.Password" @bind-Value:after="Changed" Disabled="Busy" AutoComplete="off" Width="100%" /></div>
+                <div class="full-field"><FluentTextInput Label="Password" TextInputType="TextInputType.Password" @bind-Value="State.Password" Disabled="Busy" AutoComplete="off" Width="100%" /></div>
             </div>
             <details class="profile-settings">
                 <summary>Save connection profile</summary>
                 <div class="profile-fields">
                     <FluentTextInput Label="Profile name" @bind-Value="State.ProfileName" Disabled="Busy" Width="100%" />
-                    <FluentCheckbox Label="Save password encrypted" @bind-Value="State.SavePassword" Disabled="Busy" />
+                    <FluentCheckbox Label="Save password in shared vault" @bind-Value="State.SavePassword" Disabled="@(Busy || !VaultOpen)" />
                     <p class="field-hint">Passwords stay in this session unless you choose to save them.</p>
                 </div>
             </details>
-            <FluentTextInput Label="Vault passphrase" TextInputType="TextInputType.Password" @bind-Value="State.Passphrase" Disabled="Busy" AutoComplete="off" Width="100%" />
-            <p class="field-hint">Choose a passphrase to encrypt a saved database password. Enter the same passphrase to unlock it later. Leave blank if you do not save passwords.</p>
             <div class="editor-actions">
-                <FluentButton Disabled="Busy" OnClick="SaveProfile">Save profile</FluentButton>
-                <FluentButton Appearance="ButtonAppearance.Primary" Disabled="Busy" OnClick="LoadSchema">Load schema</FluentButton>
+                <FluentButton Disabled="Busy" OnClick="OnTest">Test Connection</FluentButton>
+                <FluentButton Disabled="@(Busy || (State.SavePassword && !VaultOpen))" OnClick="SaveProfile">Save and Connect</FluentButton>
+                <FluentButton Appearance="ButtonAppearance.Primary" Disabled="Busy" OnClick="LoadSchema">Connect</FluentButton>
             </div>
         </div>
     }
@@ -59,6 +63,8 @@
 @code {
     [Parameter, EditorRequired] public ConnectionEditorState State { get; set; } = default!;
     [Parameter] public bool IsSource { get; set; }
+    [Parameter] public bool VaultOpen { get; set; }
+    [Parameter] public EventCallback OnTest { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public IReadOnlyList<ConnectionProfile> Profiles { get; set; } = [];
     [Parameter] public EventCallback OnLoadProfile { get; set; }

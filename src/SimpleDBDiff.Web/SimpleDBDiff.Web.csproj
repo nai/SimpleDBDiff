@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+<ProjectReference Include="../SimpleDBDiff.Shared/SimpleDBDiff.Shared.csproj" />
     <ProjectReference Include="..\SimpleDBDiff.Core\SimpleDBDiff.Core.csproj" />
     <ProjectReference Include="..\SimpleDBDiff.Postgres\SimpleDBDiff.Postgres.csproj" />
   </ItemGroup>

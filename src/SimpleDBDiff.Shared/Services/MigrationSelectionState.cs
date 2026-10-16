@@ -1,6 +1,6 @@
 using SimpleDBDiff.Core;
 
-namespace SimpleDBDiff.Web.Services;
+namespace SimpleDBDiff.Shared.Services;
 
 public sealed class MigrationSelectionState
 {

@@ -1,6 +1,6 @@
 using SimpleDBDiff.Core;
 using SimpleDBDiff.Postgres;
-using SimpleDBDiff.Web.Services;
+using SimpleDBDiff.Shared.Services;
 
 namespace SimpleDBDiff.Tests;
 

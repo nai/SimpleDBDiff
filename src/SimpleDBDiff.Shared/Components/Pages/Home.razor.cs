@@ -1,8 +1,9 @@
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using SimpleDBDiff.Core;
-using SimpleDBDiff.Web.Services;
+using SimpleDBDiff.Shared.Services;
 
-namespace SimpleDBDiff.Web.Components.Pages;
+namespace SimpleDBDiff.Shared.Components.Pages;
 
 public partial class Home
 {
@@ -17,6 +18,9 @@ public partial class Home
     private string Search = "";
     private string ActiveTab = "details";
     private bool Busy;
+    private bool VaultPanel;
+    private string VaultPassphrase = "";
+    private string? VaultError;
     private bool FiltersOpen;
     private bool ShowEqual = true, ShowDifferent = true, ShowLeftOnly = true, ShowRightOnly = true;
     private readonly CancellationTokenSource Lifetime = new();
@@ -72,7 +76,7 @@ public partial class Home
             side.Host = profile.Host; side.Port = profile.Port; side.Database = profile.Database; side.Username = profile.Username;
             ConnectionChanged(side);
             side.Password = "";
-            side.Password = profile.HasSavedPassword ? await ProfileStore.UnlockPasswordAsync(profile.Name, side.Passphrase) ?? "" : "";
+            side.Password = profile.HasSavedPassword && Vault.IsOpen ? await ProfileStore.UnlockPasswordAsync(profile.Name) ?? "" : "";
             side.SavePassword = profile.HasSavedPassword;
             side.Notice = "Profile loaded. Ready to connect.";
         }
@@ -80,12 +84,43 @@ public partial class Home
         catch (Exception ex) { Logger.LogError(ex, "Failed to load connection profile"); side.Error = "Could not load the connection profile."; }
     }
 
+    private async Task OpenVaultAsync()
+    {
+        try { await Vault.OpenAsync(VaultPassphrase); VaultPanel = false; VaultError = null; }
+        catch (Exception ex) { VaultError = ex is ArgumentException ? ex.Message : "Could not open the vault."; Logger.LogWarning(ex, "Vault open failed"); }
+        finally { VaultPassphrase = ""; }
+    }
+    private void CloseVault()
+    {
+        Vault.Close(); Left.Password = Right.Password = VaultPassphrase = ""; VaultPanel = false; VaultError = null;
+    }
+    private async Task SaveAndConnectAsync(ConnectionEditorState side)
+    {
+        await SaveProfileAsync(side);
+        if (side.Error is not null) return;
+        await LoadSingleAsync(side);
+        side.Notice = side.Error is null ? "Profile saved. Connected and schema loaded." : "Profile saved. Connection failed; see error below.";
+    }
+    private async Task TestAsync(ConnectionEditorState side)
+    {
+        Busy = true; side.Error = null; side.Notice = null;
+        try { await using var connection = new NpgsqlConnection(ConnectionString(side)); await connection.OpenAsync(Lifetime.Token); side.Notice = "Connection successful."; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Connection test failed"); side.Error = "Connection test failed. Check the database, credentials, and permissions."; }
+        finally { Busy = false; }
+    }
+    private static string ConnectionString(ConnectionEditorState side)
+    {
+        if (string.IsNullOrWhiteSpace(side.Host) || string.IsNullOrWhiteSpace(side.Database) || string.IsNullOrWhiteSpace(side.Username) || side.Port is < 1 or > 65535)
+            throw new ArgumentException("Enter a host, valid port, database, and username.");
+        return new NpgsqlConnectionStringBuilder { Host = side.Host, Port = side.Port, Database = side.Database, Username = side.Username, Password = side.Password, Timeout = 10, CommandTimeout = 30, Pooling = false }.ConnectionString;
+    }
+
     private async Task SaveProfileAsync(ConnectionEditorState side)
     {
         side.Error = null; side.Notice = null;
         try
         {
-            await ProfileStore.SaveAsync(new(side.ProfileName, side.Host, side.Port, side.Database, side.Username, side.SavePassword), side.Password, side.Passphrase);
+            await ProfileStore.SaveAsync(new(side.ProfileName, side.Host, side.Port, side.Database, side.Username, side.SavePassword), side.Password);
             Profiles = await ProfileStore.ListAsync(); side.SelectedProfile = side.ProfileName.Trim();
             side.Notice = "Profile saved.";
         }
@@ -105,10 +140,9 @@ public partial class Home
         side.Error = null; side.Notice = null; side.Snapshot = null;
         try
         {
-            if (string.IsNullOrWhiteSpace(side.Host) || string.IsNullOrWhiteSpace(side.Database) || string.IsNullOrWhiteSpace(side.Username) || side.Port is < 1 or > 65535)
-                throw new ArgumentException("Enter a host, valid port, database, and username.");
-            var connection = new NpgsqlConnectionStringBuilder { Host = side.Host, Port = side.Port, Database = side.Database, Username = side.Username, Password = side.Password, Timeout = 10, CommandTimeout = 30 };
-            side.Snapshot = await SchemaReader.LoadAsync(connection.ConnectionString, Lifetime.Token);
+            side.Snapshot = await SchemaReader.LoadAsync(ConnectionString(side), Lifetime.Token);
+            side.IsStale = false; side.RefreshedAt = DateTimeOffset.Now;
+            side.Notice = $"Connected to {side.Database}. {side.Snapshot.Tables.Count} tables loaded.";
             Logger.LogInformation("Loaded {TableCount} tables from {Host}/{Database}", side.Snapshot.Tables.Count, side.Host, side.Database);
         }
         catch (OperationCanceledException) when (Lifetime.IsCancellationRequested) { }
@@ -164,6 +198,6 @@ public partial class Home
     private void Swap() { (Left, Right) = (Right, Left); ClearComparison(); Error = null; }
     private void ConnectionChanged(ConnectionEditorState side) { side.Snapshot = null; side.Error = null; side.Notice = null; Error = null; ClearComparison(); }
     private void ClearComparison() { Rows = null; Selection = null; Script = null; SelectedTable = null; ActiveTab = "details"; RefreshTables(); }
-    public void Dispose() { Lifetime.Cancel(); Lifetime.Dispose(); }
+    public void Dispose() { Lifetime.Cancel(); Lifetime.Dispose(); CloseVault(); }
     private sealed record TableEntry(string Key, DifferenceKind? Kind, TableDifferenceCounts Counts);
 }
