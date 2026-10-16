@@ -17,7 +17,7 @@ public sealed class SelectiveMigrationTests
     }
 
     [Fact]
-    public void DefaultSelectionIncludesEverythingAndChildExclusionMakesParentMixed()
+    public void TableToggleSkipsMigrationAndRestoresPreviousObjectChoices()
     {
         var rows = Rows;
         var state = new MigrationSelectionState(rows);
@@ -25,15 +25,52 @@ public sealed class SelectiveMigrationTests
         Assert.Equal(3, state.SelectedChangeCount);
         var column = rows.Single(r => r.ObjectName == "changed");
         state.SetObject(column, false);
-        Assert.Null(state.TableState(Source.Key));
+        Assert.True(state.TableState(Source.Key));
         Assert.False(state.Snapshot().ContainsTable(Source.Key));
         Assert.Equal(2, state.SelectedChangeCount);
         state.SetTable(Source.Key, false);
         Assert.False(state.TableState(Source.Key));
         Assert.Equal(0, state.SelectedObjectCount);
-        state.SetAll(true);
+        Assert.False(state.IsSelected(column));
+        Assert.True(state.IsSelected(rows.Single(r => r.ObjectName == "new")));
+        Assert.Empty(state.Snapshot().Objects);
+        var generator = new PostgresMigrationGenerator();
+        Assert.DoesNotContain("ALTER TABLE", generator.Generate(new([Source]), new([Target]), state.Snapshot()));
+        state.SetTable(Source.Key, true);
         Assert.True(state.TableState(Source.Key));
+        Assert.False(state.IsSelected(column));
+        Assert.Equal(2, state.SelectedChangeCount);
+        var sql = generator.Generate(new([Source]), new([Target]), state.Snapshot());
+        Assert.Contains("ADD COLUMN \"new\"", sql);
+        Assert.Contains("DROP COLUMN \"old\"", sql);
+        Assert.DoesNotContain("\"changed\"", sql);
+    }
+
+    [Fact]
+    public void BulkTableAndDetailControlsAreIndependent()
+    {
+        var rows = Rows;
+        var state = new MigrationSelectionState(rows);
+        var column = rows.Single(r => r.ObjectName == "changed");
+        state.SetObject(column, false);
+        state.SetAll(false);
+        Assert.True(state.IsSelected(rows.Single(r => r.ObjectName == "new")));
+        Assert.False(state.IsSelected(column));
+        Assert.Empty(state.Snapshot().Objects);
+        state.SetAll(true);
+        Assert.False(state.IsSelected(column));
+        Assert.Equal(2, state.SelectedChangeCount);
+        state.SetDetails(Source.Key, false);
+        Assert.True(state.TableState(Source.Key));
+        Assert.Equal(0, state.SelectedObjectCount);
+        state.SetTable(Source.Key, false);
+        state.SetDetails(Source.Key, true);
+        Assert.False(state.TableState(Source.Key));
+        Assert.Empty(state.Snapshot().Objects);
+        state.SetTable(Source.Key, true);
         Assert.All(rows, row => Assert.True(state.IsSelected(row)));
+        Assert.True(state.Snapshot().ContainsTable(Source.Key));
+        Assert.Equal(3, state.SelectedChangeCount);
     }
 
     [Fact]

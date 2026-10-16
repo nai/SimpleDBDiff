@@ -44,8 +44,8 @@
             @if (Selection is not null)
             {
                 <div class="selection-tools table-selection-tools" aria-label="Table selection controls">
-                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(true)" Title="Check all tables and objects, including hidden results">Check all</FluentButton>
-                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(false)" Title="Uncheck all tables and objects, including hidden results">Uncheck all</FluentButton>
+                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(true)" Title="Include all tables; preserve object selections, including hidden results">Check all</FluentButton>
+                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(false)" Title="Skip all tables; preserve object selections, including hidden results">Uncheck all</FluentButton>
                     <span>All tables · filters only change visibility</span>
                 </div>
             }
@@ -63,7 +63,7 @@
                     <div class="table-selection-entry @(SelectedTable == table.Key ? "selected" : "")">
                         @if (Selection is not null)
                         {
-                            <FluentCheckbox ThreeState="true" ShowIndeterminate="false" CheckState="@Selection.TableState(table.Key)" CheckStateChanged="_ => ToggleTable(table.Key)" AriaLabel="@($"Include table {table.Key} in migration")" />
+                            <FluentCheckbox Value="@Selection.TableState(table.Key)" ValueChanged="_ => ToggleTable(table.Key)" AriaLabel="@($"Include table {table.Key} in migration")" />
                         }
                         <button type="button" class="table-entry" aria-pressed="@(SelectedTable == table.Key)" @onclick="() => SelectTable(table.Key)">
                             <span class="table-entry-text"><strong>@table.Key</strong>
@@ -109,6 +109,10 @@
                                 <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllDetails(true)" Title="Check every object in this table, including hidden results">Check all</FluentButton>
                                 <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllDetails(false)" Title="Uncheck every object in this table, including hidden results">Uncheck all</FluentButton>
                             </div>
+                            @if (Selection is not null && !Selection.TableState(SelectedTable))
+                            {
+                                <p class="field-hint" role="status">This table is skipped. Object selections are preserved for when you include it again.</p>
+                            }
                             @if (!SelectedRows.Any())
                             {
                                 <div class="detail-empty">No objects match the selected status filters. Enable another result type to see more.</div>

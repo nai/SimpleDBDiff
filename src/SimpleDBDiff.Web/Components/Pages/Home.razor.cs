@@ -157,7 +157,7 @@ public partial class Home
     private void ToggleTable(string key) { Selection?.SetTable(key, Selection.TableState(key) != true); SelectionChanged(); }
     private void SetObject(SchemaDifference row, bool include) { Selection?.SetObject(row, include); SelectionChanged(); }
     private void SetAllTables(bool include) { Selection?.SetAll(include); SelectionChanged(); }
-    private void SetAllDetails(bool include) { if (SelectedTable is not null) Selection?.SetTable(SelectedTable, include); SelectionChanged(); }
+    private void SetAllDetails(bool include) { if (SelectedTable is not null) Selection?.SetDetails(SelectedTable, include); SelectionChanged(); }
 
     private void SelectTable(string key) { SelectedTable = key; ActiveTab = "details"; }
     private void Swap() { (Left, Right) = (Right, Left); ClearComparison(); Error = null; }

@@ -39,7 +39,7 @@
                 </div>
             </details>
             <FluentTextInput Label="Vault passphrase" TextInputType="TextInputType.Password" @bind-Value="State.Passphrase" Disabled="Busy" AutoComplete="off" Width="100%" />
-            <p class="field-hint">Needed only to save or unlock an encrypted password.</p>
+            <p class="field-hint">Choose a passphrase to encrypt a saved database password. Enter the same passphrase to unlock it later. Leave blank if you do not save passwords.</p>
             <div class="editor-actions">
                 <FluentButton Disabled="Busy" OnClick="SaveProfile">Save profile</FluentButton>
                 <FluentButton Appearance="ButtonAppearance.Primary" Disabled="Busy" OnClick="LoadSchema">Load schema</FluentButton>

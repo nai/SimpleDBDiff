@@ -7,6 +7,7 @@ public sealed class MigrationSelectionState
     private readonly IReadOnlyList<SchemaDifference> _rows;
     private readonly Dictionary<string, MigrationObjectKey[]> _members;
     private readonly HashSet<MigrationObjectKey> _selected = [];
+    private readonly HashSet<string> _includedTables = new(StringComparer.Ordinal);
 
     public MigrationSelectionState(IReadOnlyList<SchemaDifference> rows)
     {
@@ -18,19 +19,15 @@ public sealed class MigrationSelectionState
             var children = grouped.GetValueOrDefault(d.ObjectName) ?? [];
             return children.Length > 0 ? children : [MigrationObjectKey.Table(d.ObjectName)];
         }, StringComparer.Ordinal);
+        foreach (var table in _members.Keys) SetDetails(table, true);
         SetAll(true);
     }
 
-    public int SelectedObjectCount => _members.Values.Sum(m => m.Count(_selected.Contains));
+    public int SelectedObjectCount => _members.Where(t => _includedTables.Contains(t.Key)).Sum(t => t.Value.Count(_selected.Contains));
     public int SelectedChangeCount => _rows.Count(r => r.Kind != DifferenceKind.Equal &&
-        (r.ObjectType != "Table" || _members[r.ObjectName][0].Kind == SchemaObjectKind.Table) && IsSelected(r));
+        (r.ObjectType != "Table" || _members[r.ObjectName][0].Kind == SchemaObjectKind.Table) && _includedTables.Contains(ComparisonPresentation.TableKey(r)) && IsSelected(r));
     public bool IsSelected(SchemaDifference row) => _selected.Contains(ComparisonPresentation.ObjectKey(row));
-    public bool? TableState(string key)
-    {
-        var members = _members[key];
-        var count = members.Count(_selected.Contains);
-        return count == 0 ? false : count == members.Length ? true : null;
-    }
+    public bool TableState(string key) => _includedTables.Contains(key);
 
     public void SetObject(SchemaDifference row, bool include)
     {
@@ -40,6 +37,11 @@ public sealed class MigrationSelectionState
     }
 
     public void SetTable(string table, bool include)
+    {
+        if (include) _includedTables.Add(table); else _includedTables.Remove(table);
+    }
+
+    public void SetDetails(string table, bool include)
     {
         foreach (var member in _members[table])
             if (include) _selected.Add(member); else _selected.Remove(member);
@@ -51,7 +53,8 @@ public sealed class MigrationSelectionState
         foreach (var key in _members.Keys) SetTable(key, include);
     }
 
-    public MigrationSelection Snapshot() => new(_selected);
+    // Table inclusion gates the generated selection without changing remembered object choices.
+    public MigrationSelection Snapshot() => new(_selected.Where(key => _includedTables.Contains(key.TableKey)));
     private void UpdateTable(string key)
     {
         var parent = MigrationObjectKey.Table(key);
