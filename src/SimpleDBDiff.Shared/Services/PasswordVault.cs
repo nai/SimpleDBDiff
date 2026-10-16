@@ -21,10 +21,20 @@ public sealed class PasswordVault(IWorkspaceStorage storage) : IDisposable
         try
         {
             var loaded = bytes is null ? new Dictionary<string, string>() : JsonSerializer.Deserialize<Dictionary<string, string>>(Decrypt(bytes, nextKey))!;
+            if (saved is null)
+            {
+                var legacy = JsonSerializer.Deserialize<LegacyProfile[]>(await storage.ReadAsync("legacy-profiles") ?? "[]")!;
+                foreach (var profile in legacy.Where(p => p.Secret is not null))
+                {
+                    var legacyKey = Rfc2898DeriveBytes.Pbkdf2(passphrase, profile.Secret!.AsSpan(0,16), 310_000, HashAlgorithmName.SHA256,32);
+                    try { loaded[profile.Profile.Name] = Decrypt(profile.Secret!,legacyKey); }
+                    finally { CryptographicOperations.ZeroMemory(legacyKey); }
+                }
+            }
             key = nextKey; salt = nextSalt; secrets = loaded;
             if (saved is null) await PersistAsync();
         }
-        catch (CryptographicException) { CryptographicOperations.ZeroMemory(nextKey); throw new ArgumentException("The vault passphrase is incorrect or the vault is damaged."); }
+        catch (CryptographicException) { Close(); CryptographicOperations.ZeroMemory(nextKey); throw new ArgumentException("The vault passphrase is incorrect or the vault is damaged."); }
         catch { Close(); CryptographicOperations.ZeroMemory(nextKey); throw; }
     }
     public string? Get(string name)

@@ -19,12 +19,21 @@ public partial class Home
     private string ActiveTab = "details";
     private bool Busy;
     private bool VaultPanel;
+    private bool SessionsOpen = true;
+    private IReadOnlyList<ComparisonSession> Sessions = [];
+    private ComparisonSession? ActiveSession;
+    private ComparisonSession? PendingSession;
+    private string SaveStatus = "No session loaded";
+    private bool SaveFailed, Saving, Restoring;
+    private string? LastSavedPayload, LastAttemptedPayload;
+    private string? RenameId;
+    private string RenameName = "";
     private string VaultPassphrase = "";
     private string? VaultError;
     private bool FiltersOpen;
     private bool ShowEqual = true, ShowDifferent = true, ShowLeftOnly = true, ShowRightOnly = true;
     private readonly CancellationTokenSource Lifetime = new();
-    private bool CanCompare => !string.IsNullOrWhiteSpace(Left.Database) && !string.IsNullOrWhiteSpace(Right.Database);
+    private bool CanCompare => Left.Snapshot is not null && Right.Snapshot is not null && !Left.IsStale && !Right.IsStale;
     private string ScriptDownload => "data:application/sql;charset=utf-8," + Uri.EscapeDataString(Script ?? "");
     private int ChangeCount => TableEntries.Sum(t => t.Counts.Different + t.Counts.LeftOnly + t.Counts.RightOnly);
     private DifferenceKind? SelectedKind => TableEntries.FirstOrDefault(t => t.Key == SelectedTable)?.Kind;
@@ -62,7 +71,7 @@ public partial class Home
 
     protected override async Task OnInitializedAsync()
     {
-        try { Profiles = await ProfileStore.ListAsync(); }
+        try { Profiles = await ProfileStore.ListAsync(); Sessions = await SessionStore.ListAsync(); }
         catch (Exception ex) { Logger.LogError(ex, "Failed to load connection profiles"); Error = "Saved profiles could not be loaded. You can still enter connection details."; }
     }
 
@@ -78,7 +87,7 @@ public partial class Home
             side.Password = "";
             side.Password = profile.HasSavedPassword && Vault.IsOpen ? await ProfileStore.UnlockPasswordAsync(profile.Name) ?? "" : "";
             side.SavePassword = profile.HasSavedPassword;
-            side.Notice = "Profile loaded. Ready to connect.";
+            side.Notice = profile.HasSavedPassword && !Vault.IsOpen ? "Profile loaded. Open the vault or enter the database password manually." : "Profile loaded. Ready to connect.";
         }
         catch (ArgumentException ex) { side.Error = ex.Message; }
         catch (Exception ex) { Logger.LogError(ex, "Failed to load connection profile"); side.Error = "Could not load the connection profile."; }
@@ -86,7 +95,7 @@ public partial class Home
 
     private async Task OpenVaultAsync()
     {
-        try { await Vault.OpenAsync(VaultPassphrase); VaultPanel = false; VaultError = null; }
+        try { await Vault.OpenAsync(VaultPassphrase); VaultPanel = false; VaultError = null; if (PendingSession is not null) await RetrieveSessionPasswordsAsync(); }
         catch (Exception ex) { VaultError = ex is ArgumentException ? ex.Message : "Could not open the vault."; Logger.LogWarning(ex, "Vault open failed"); }
         finally { VaultPassphrase = ""; }
     }
@@ -130,14 +139,20 @@ public partial class Home
 
     private async Task LoadSingleAsync(ConnectionEditorState side)
     {
-        Busy = true; ClearComparison(); Error = null;
-        try { await LoadSchemaCoreAsync(side); }
+        var checkpoint = Selection is not null && Left.Snapshot is not null && Right.Snapshot is not null
+            ? Selection.Capture(Left.Snapshot, Right.Snapshot) : null;
+        Busy = true; Script = null; Error = null;
+        try
+        {
+            await LoadSchemaCoreAsync(side);
+            if (CanCompare && Rows is not null) CompareLoaded(checkpoint);
+        }
         finally { Busy = false; RefreshTables(); }
     }
 
     private async Task LoadSchemaCoreAsync(ConnectionEditorState side)
     {
-        side.Error = null; side.Notice = null; side.Snapshot = null;
+        side.Error = null; side.Notice = null; side.IsStale = true;
         try
         {
             side.Snapshot = await SchemaReader.LoadAsync(ConnectionString(side), Lifetime.Token);
@@ -154,34 +169,38 @@ public partial class Home
         catch (Exception ex) { Logger.LogError(ex, "Schema load failed"); side.Error = "Could not load this schema. Check the server logs for details."; }
     }
 
-    private async Task CompareAsync()
+    private Task CompareAsync()
     {
-        Busy = true; Error = null; ClearComparison();
+        if (!CanCompare) { Error = "Connect both databases to load current schemas first."; return Task.CompletedTask; }
+        var checkpoint = Selection?.Capture(Left.Snapshot!, Right.Snapshot!);
+        CompareLoaded(checkpoint);
+        return Task.CompletedTask;
+    }
+
+    private void CompareLoaded(SelectionCheckpoint? checkpoint = null)
+    {
+        Script = null; Error = null;
         try
         {
-            await Task.WhenAll(LoadSchemaCoreAsync(Left), LoadSchemaCoreAsync(Right));
-            if (Lifetime.IsCancellationRequested) return;
-            if (Left.Snapshot is null || Right.Snapshot is null) { Error = "Both schemas must load successfully before comparison."; return; }
-            var differences = SchemaComparer.Compare(Left.Snapshot, Right.Snapshot);
-            Rows = ComparisonPresentation.Expand(Left.Snapshot, Right.Snapshot, differences);
+            var differences = SchemaComparer.Compare(Left.Snapshot!, Right.Snapshot!);
+            Rows = ComparisonPresentation.Expand(Left.Snapshot!, Right.Snapshot!, differences);
             Selection = new(Rows);
+            if (checkpoint is not null) Selection.Restore(checkpoint, Left.Snapshot!, Right.Snapshot!);
             RefreshTables();
-            SelectedTable = differences.FirstOrDefault(d => d.ObjectType == "Table" && d.Kind != DifferenceKind.Equal)?.ObjectName
-                ?? TableEntries.FirstOrDefault()?.Key;
+            if (!TableEntries.Any(t => t.Key == SelectedTable))
+                SelectedTable = differences.FirstOrDefault(d => d.ObjectType == "Table" && d.Kind != DifferenceKind.Equal)?.ObjectName ?? TableEntries.FirstOrDefault()?.Key;
             ActiveTab = "details";
-            Logger.LogInformation("Compared {LeftCount} source tables and {RightCount} target tables; found {ChangeCount} object changes", Left.Snapshot.Tables.Count, Right.Snapshot.Tables.Count, ChangeCount);
         }
-        catch (Exception ex) { Logger.LogError(ex, "Comparison failed"); Error = "Comparison failed. Review schema metadata and server logs."; }
-        finally { Busy = false; RefreshTables(); }
+        catch (Exception ex) { ClearComparison(); Logger.LogError(ex, "Comparison failed"); Error = "Comparison failed. Review schema metadata and server logs."; }
     }
 
     private void GenerateSql()
     {
-        if (Rows is null || Selection is null || Left.Snapshot is null || Right.Snapshot is null) return;
+        if (!CanCompare || Rows is null || Selection is null) return;
         Script = null; Error = null; ActiveTab = "sql";
         try
         {
-            Script = MigrationGenerator.Generate(Left.Snapshot, Right.Snapshot, Selection.Snapshot());
+            Script = MigrationGenerator.Generate(Left.Snapshot!, Right.Snapshot!, Selection.Snapshot());
             Logger.LogInformation("Generated migration SQL for {SelectedChanges} selected changes", Selection.SelectedChangeCount);
         }
         catch (MigrationSelectionException ex) { Error = ex.Message; }
@@ -195,8 +214,8 @@ public partial class Home
     private void SetAllDetails(bool include) { if (SelectedTable is not null) Selection?.SetDetails(SelectedTable, include); SelectionChanged(); }
 
     private void SelectTable(string key) { SelectedTable = key; ActiveTab = "details"; }
-    private void Swap() { (Left, Right) = (Right, Left); ClearComparison(); Error = null; }
-    private void ConnectionChanged(ConnectionEditorState side) { side.Snapshot = null; side.Error = null; side.Notice = null; Error = null; ClearComparison(); }
+    private void Swap() { (Left, Right) = (Right, Left); ClearComparison(); Error = null; if (CanCompare) CompareLoaded(); }
+    private void ConnectionChanged(ConnectionEditorState side) { side.IsStale = side.Snapshot is not null; side.Error = null; side.Notice = null; Error = null; ClearComparison(); }
     private void ClearComparison() { Rows = null; Selection = null; Script = null; SelectedTable = null; ActiveTab = "details"; RefreshTables(); }
     public void Dispose() { Lifetime.Cancel(); Lifetime.Dispose(); CloseVault(); }
     private sealed record TableEntry(string Key, DifferenceKind? Kind, TableDifferenceCounts Counts);

@@ -6,8 +6,12 @@ public sealed record ConnectionProfile(string Name, string Host, int Port, strin
 
 public sealed class ConnectionProfileStore(IWorkspaceStorage storage, PasswordVault vault)
 {
-    public async Task<IReadOnlyList<ConnectionProfile>> ListAsync() =>
-        JsonSerializer.Deserialize<ConnectionProfile[]>(await storage.ReadAsync("profiles-v2") ?? "[]")!;
+    public async Task<IReadOnlyList<ConnectionProfile>> ListAsync()
+    {
+        var saved = await storage.ReadAsync("profiles-v2");
+        if (saved is not null) return JsonSerializer.Deserialize<ConnectionProfile[]>(saved)!;
+        return (JsonSerializer.Deserialize<LegacyProfile[]>(await storage.ReadAsync("legacy-profiles") ?? "[]")!).Select(p => p.Profile).ToArray();
+    }
 
     public async Task SaveAsync(ConnectionProfile profile, string password)
     {

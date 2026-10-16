@@ -17,7 +17,7 @@ public sealed class SelectivePostgresIntegrationTests : IAsyncLifetime
         if (Right is not null) await ExecuteAsync(Right, "DROP SCHEMA IF EXISTS sdd_select CASCADE");
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task SelectiveSqlAppliesChosenChangesAndPreservesExcludedTablesColumnsIndexesAndForeignKeys()
     {
         if (Left is null || Right is null) return;
@@ -58,7 +58,7 @@ public sealed class SelectivePostgresIntegrationTests : IAsyncLifetime
         Assert.Equal("keep", Assert.Single(after.Tables.Single(t => t.Name == "left_only").Columns).Name);
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task ExcludedDependenciesFailClearlyAndSelectingTheirRemovalsProducesExecutableSql()
     {
         if (Left is null || Right is null) return;
@@ -94,7 +94,7 @@ public sealed class SelectivePostgresIntegrationTests : IAsyncLifetime
         Assert.All(SchemaComparer.Compare(source, await LoadAsync(Right)), d => Assert.Equal(DifferenceKind.Equal, d.Kind));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task EqualForeignKeyMustBeIncludedIfSelectedTypeChangesRequireRebuildingIt()
     {
         if (Left is null || Right is null) return;
@@ -117,7 +117,7 @@ public sealed class SelectivePostgresIntegrationTests : IAsyncLifetime
         Assert.All(SchemaComparer.Compare(source, await LoadAsync(Right)), d => Assert.Equal(DifferenceKind.Equal, d.Kind));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task GeneratedColumnReplacementRebuildsChosenIndexAndConstraint()
     {
         if (Left is null || Right is null) return;

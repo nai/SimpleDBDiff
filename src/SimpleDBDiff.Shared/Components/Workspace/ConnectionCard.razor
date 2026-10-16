@@ -11,6 +11,8 @@
             {
                 <span class="connection-status"><span class="status-dot"></span>@(State.IsStale ? "Out of date · reconnect" : $"Connected · {State.Snapshot.Tables.Count} tables")</span>
             }
+            @if (State.Snapshot is null) { <span class="connection-status">Not connected</span> }
+            @if (State.IsStale) { <FluentButton Disabled="Busy" OnClick="LoadSchema">Reconnect</FluentButton> }
             @if (State.Snapshot is not null && !State.IsStale)
             {
                 <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="LoadSchema">Refresh Schema</FluentButton>
