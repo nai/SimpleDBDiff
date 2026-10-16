@@ -43,6 +43,18 @@ public static class ComparisonPresentation
     public static string TableKey(SchemaDifference difference) => difference.ObjectType == "Table"
         ? difference.ObjectName : difference.ObjectType[(difference.ObjectType.IndexOf(' ') + 1)..];
 
+    public static MigrationObjectKey ObjectKey(SchemaDifference difference) => difference.ObjectType == "Table"
+        ? MigrationObjectKey.Table(difference.ObjectName)
+        : new(Enum.Parse<SchemaObjectKind>(difference.ObjectType.Split(' ')[0]), TableKey(difference), difference.ObjectName);
+
+    public static TableDifferenceCounts Counts(IEnumerable<SchemaDifference> rows)
+    {
+        var all = rows.ToArray();
+        var details = all.Where(d => d.ObjectType != "Table").ToArray();
+        var counted = details.Length > 0 ? details : all;
+        return new(counted.Count(d => d.Kind == DifferenceKind.Different), counted.Count(d => d.Kind == DifferenceKind.RightOnly), counted.Count(d => d.Kind == DifferenceKind.LeftOnly));
+    }
+
     public static string StatusLabel(DifferenceKind? kind) => kind switch
     {
         DifferenceKind.Equal => "Equal", DifferenceKind.Different => "Different",
@@ -55,3 +67,5 @@ public static class ComparisonPresentation
         DifferenceKind.LeftOnly => "left-only", DifferenceKind.RightOnly => "right-only", _ => "pending"
     };
 }
+
+public sealed record TableDifferenceCounts(int Different, int RightOnly, int LeftOnly);

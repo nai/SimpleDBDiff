@@ -124,3 +124,21 @@ table.schema-grid { min-width: 720px; width: 100%; font-size: 12px; }
 .swap-symbol { margin-right: 6px; }
 .schema-grid td { min-width: 0; }
 .definition { display: block; }
+/* Selection is independent from the result visibility filters. */
+.table-selection-entry { display: flex; align-items: center; gap: 2px; border: 1px solid transparent; border-radius: 4px; padding-left: 6px; margin-bottom: 3px; }
+.table-selection-entry:hover { background: #eee; }
+.table-selection-entry.selected { background: #eaf2fa; border-color: #d9e7f4; }
+.table-selection-entry .table-entry { padding: 10px 6px; margin: 0; border: 0; min-width: 0; flex: 1; }
+.table-selection-entry .table-entry:hover { background: transparent; }
+.table-counts { display: flex; gap: 8px; font-variant-numeric: tabular-nums; }
+.table-counts .different { color: #926514; }.table-counts .right-only { color: #7a5593; }.table-counts .left-only { color: #276ca8; }
+.selection-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.selection-tools > span { font-size: 11px; color: #777; }
+.table-selection-tools { padding: 6px 8px 10px; border-bottom: 1px solid var(--border); }
+.table-selection-tools > span { flex-basis: 100%; padding: 0 8px; font-size: 10px; line-height: 1.6; }
+.detail-selection-tools { padding: 0 22px 14px; }
+.detail-selection-tools > span { margin-right: auto; }
+.sql-empty { padding: 45px 25px; text-align: center; }
+.sql-empty p { margin: 14px auto 22px; color: #777; max-width: 470px; line-height: 1.7; font-size: 13px; }
+table.schema-grid { min-width: 780px; }
+@media (max-width: 700px) { .command-bar .command-actions { flex-wrap: wrap; } }

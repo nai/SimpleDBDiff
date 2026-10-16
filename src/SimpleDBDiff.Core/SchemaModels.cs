@@ -1,8 +1,8 @@
 namespace SimpleDBDiff.Core;
 
-public sealed record ColumnSchema(string Name, string DataType, bool IsNullable, string? DefaultExpression, bool IsIdentity = false, string? GeneratedExpression = null, string? IdentityGeneration = null);
-public sealed record ConstraintSchema(string Name, char Kind, string Definition);
-public sealed record IndexSchema(string Name, string Definition);
+public sealed record ColumnSchema(string Name, string DataType, bool IsNullable, string? DefaultExpression, bool IsIdentity = false, string? GeneratedExpression = null, string? IdentityGeneration = null, IReadOnlyList<string>? Dependencies = null);
+public sealed record ConstraintSchema(string Name, char Kind, string Definition, IReadOnlyList<string>? Columns = null, string? ReferencedTable = null, IReadOnlyList<string>? ReferencedColumns = null, string? ReferencedKeyName = null, SchemaObjectKind? ReferencedKeyKind = null);
+public sealed record IndexSchema(string Name, string Definition, IReadOnlyList<string>? Columns = null);
 public sealed record TableSchema(string Schema, string Name, IReadOnlyList<ColumnSchema> Columns, IReadOnlyList<ConstraintSchema> Constraints, IReadOnlyList<IndexSchema> Indexes)
 {
     public string Key => $"{Schema}.{Name}";
@@ -19,4 +19,5 @@ public interface ISchemaReader
 public interface IMigrationGenerator
 {
     string Generate(SchemaSnapshot leftSource, SchemaSnapshot rightTarget);
+    string Generate(SchemaSnapshot leftSource, SchemaSnapshot rightTarget, MigrationSelection selection);
 }

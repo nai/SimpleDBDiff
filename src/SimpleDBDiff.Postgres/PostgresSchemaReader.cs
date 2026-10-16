@@ -41,7 +41,12 @@ public sealed class PostgresSchemaReader : ISchemaReader
 
         await using (var command = new NpgsqlCommand("""
             SELECT n.nspname, c.relname, a.attname, pg_catalog.format_type(a.atttypid, a.atttypmod),
-                   NOT a.attnotnull, pg_catalog.pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text
+                   NOT a.attnotnull, pg_catalog.pg_get_expr(d.adbin, d.adrelid), a.attidentity::text, a.attgenerated::text,
+                   ARRAY(SELECT da.attname::text FROM pg_catalog.pg_depend dep
+                         JOIN pg_catalog.pg_attribute da ON da.attrelid = dep.refobjid AND da.attnum = dep.refobjsubid
+                         WHERE dep.classid = 'pg_catalog.pg_attrdef'::regclass AND dep.objid = d.oid
+                           AND dep.refclassid = 'pg_catalog.pg_class'::regclass AND dep.refobjid = c.oid
+                           AND dep.refobjsubid > 0 ORDER BY da.attnum)
             FROM pg_catalog.pg_attribute a
             JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -59,29 +64,47 @@ public sealed class PostgresSchemaReader : ISchemaReader
                 var identityCode = reader.GetString(6);
                 var identity = identityCode.Length > 0;
                 var generated = reader.GetString(7).Length > 0;
-                table.Columns.Add(new(reader.GetString(2), reader.GetString(3), reader.GetBoolean(4), generated ? null : expression, identity, generated ? expression : null, identityCode == "a" ? "ALWAYS" : identityCode == "d" ? "BY DEFAULT" : null));
+                table.Columns.Add(new(reader.GetString(2), reader.GetString(3), reader.GetBoolean(4), generated ? null : expression, identity, generated ? expression : null, identityCode == "a" ? "ALWAYS" : identityCode == "d" ? "BY DEFAULT" : null, reader.GetFieldValue<string[]>(8)));
             }
 
+        // PostgreSQL 18 also catalogs NOT NULL as constraints. Normalize these through column nullability only.
         await using (var command = new NpgsqlCommand("""
-            SELECT n.nspname, c.relname, co.conname, co.contype::text, pg_catalog.pg_get_constraintdef(co.oid, false)
+            SELECT n.nspname, c.relname, co.conname, co.contype::text, pg_catalog.pg_get_constraintdef(co.oid, false),
+                   ARRAY(SELECT a.attname::text FROM pg_catalog.pg_attribute a
+                         WHERE a.attrelid = c.oid AND a.attnum = ANY(co.conkey) ORDER BY array_position(co.conkey, a.attnum)),
+                   CASE WHEN co.confrelid <> 0 THEN rn.nspname || '.' || rc.relname END,
+                   ARRAY(SELECT a.attname::text FROM pg_catalog.pg_attribute a
+                         WHERE a.attrelid = co.confrelid AND a.attnum = ANY(co.confkey) ORDER BY array_position(co.confkey, a.attnum)),
+                   CASE WHEN co.contype = 'f' THEN COALESCE(rkey.conname, ri.relname)::text END,
+                   rkey.oid IS NOT NULL
             FROM pg_catalog.pg_constraint co
             JOIN pg_catalog.pg_class c ON c.oid = co.conrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            LEFT JOIN pg_catalog.pg_class rc ON rc.oid = co.confrelid
+            LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid = rc.relnamespace
+            LEFT JOIN pg_catalog.pg_constraint rkey ON rkey.conrelid = co.confrelid AND rkey.conindid = co.conindid AND rkey.contype IN ('p', 'u')
+            LEFT JOIN pg_catalog.pg_class ri ON ri.oid = co.conindid
             WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND co.contype IN ('p', 'u', 'f', 'c', 'x')
               AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
             ORDER BY n.nspname, c.relname, co.conname
             """, connection))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             while (await reader.ReadAsync(cancellationToken))
-                tables[(reader.GetString(0), reader.GetString(1))].Constraints.Add(new(reader.GetString(2), reader.GetString(3)[0], reader.GetString(4)));
+                tables[(reader.GetString(0), reader.GetString(1))].Constraints.Add(new(reader.GetString(2), reader.GetString(3)[0], reader.GetString(4), reader.GetFieldValue<string[]>(5), reader.IsDBNull(6) ? null : reader.GetString(6), reader.GetFieldValue<string[]>(7), reader.IsDBNull(8) ? null : reader.GetString(8), reader.IsDBNull(8) ? null : reader.GetBoolean(9) ? SchemaObjectKind.Constraint : SchemaObjectKind.Index));
 
         await using (var command = new NpgsqlCommand("""
-            SELECT n.nspname, c.relname, i.relname, pg_catalog.pg_get_indexdef(i.oid)
+            SELECT n.nspname, c.relname, i.relname, pg_catalog.pg_get_indexdef(i.oid),
+                   ARRAY(SELECT DISTINCT a.attname::text FROM pg_catalog.pg_depend dep
+                         JOIN pg_catalog.pg_attribute a ON a.attrelid = dep.refobjid AND a.attnum = dep.refobjsubid
+                         WHERE dep.classid = 'pg_catalog.pg_class'::regclass AND dep.objid = i.oid
+                           AND dep.refclassid = 'pg_catalog.pg_class'::regclass AND dep.refobjid = c.oid
+                           AND dep.refobjsubid > 0 ORDER BY a.attname::text)
             FROM pg_catalog.pg_index x
             JOIN pg_catalog.pg_class c ON c.oid = x.indrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_catalog.pg_class i ON i.oid = x.indexrelid
-            LEFT JOIN pg_catalog.pg_constraint co ON co.conindid = i.oid
+            LEFT JOIN pg_catalog.pg_constraint co ON co.conindid = i.oid AND co.conrelid = c.oid AND co.contype IN ('p', 'u', 'x')
             WHERE c.relkind = 'r' AND co.oid IS NULL
               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
               AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp_%'
@@ -89,7 +112,7 @@ public sealed class PostgresSchemaReader : ISchemaReader
             """, connection))
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
             while (await reader.ReadAsync(cancellationToken))
-                tables[(reader.GetString(0), reader.GetString(1))].Indexes.Add(new(reader.GetString(2), reader.GetString(3)));
+                tables[(reader.GetString(0), reader.GetString(1))].Indexes.Add(new(reader.GetString(2), reader.GetString(3), reader.GetFieldValue<string[]>(4)));
 
         return new(tables.Values.Select(t => new TableSchema(t.Schema, t.Name, t.Columns, t.Constraints, t.Indexes)).ToArray());
     }

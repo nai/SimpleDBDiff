@@ -10,7 +10,8 @@ public partial class Home
     private ConnectionEditorState Right = new();
     private IReadOnlyList<ConnectionProfile> Profiles = [];
     private IReadOnlyList<SchemaDifference>? Rows;
-    private string Script = "";
+    private string? Script;
+    private MigrationSelectionState? Selection;
     private string? Error;
     private string? SelectedTable;
     private string Search = "";
@@ -19,8 +20,8 @@ public partial class Home
     private bool ShowEqual = true, ShowDifferent = true, ShowLeftOnly = true, ShowRightOnly = true;
     private readonly CancellationTokenSource Lifetime = new();
     private bool CanCompare => !string.IsNullOrWhiteSpace(Left.Database) && !string.IsNullOrWhiteSpace(Right.Database);
-    private string ScriptDownload => "data:application/sql;charset=utf-8," + Uri.EscapeDataString(Script);
-    private int ChangeCount => Rows?.Count(d => d.ObjectType != "Table" && d.Kind != DifferenceKind.Equal) ?? 0;
+    private string ScriptDownload => "data:application/sql;charset=utf-8," + Uri.EscapeDataString(Script ?? "");
+    private int ChangeCount => TableEntries.Sum(t => t.Counts.Different + t.Counts.LeftOnly + t.Counts.RightOnly);
     private DifferenceKind? SelectedKind => TableEntries.FirstOrDefault(t => t.Key == SelectedTable)?.Kind;
     private IEnumerable<SchemaDifference> FilteredRows => Rows?.Where(d => IsVisible(d.Kind)) ?? [];
     private IEnumerable<SchemaDifference> SelectedRows => FilteredRows.Where(d => d.ObjectType != "Table" && ComparisonPresentation.TableKey(d) == SelectedTable);
@@ -40,9 +41,12 @@ public partial class Home
     private void RefreshTables()
     {
         var kinds = Rows?.Where(d => d.ObjectType == "Table").ToDictionary(d => d.ObjectName, d => (DifferenceKind?)d.Kind, StringComparer.Ordinal) ?? [];
+        var counts = Rows?.Where(d => d.ObjectType != "Table").GroupBy(ComparisonPresentation.TableKey)
+            .ToDictionary(g => g.Key, g => ComparisonPresentation.Counts(g), StringComparer.Ordinal) ?? [];
         TableEntries = (Left.Snapshot?.Tables.Select(t => t.Key) ?? [])
             .Union(Right.Snapshot?.Tables.Select(t => t.Key) ?? [], StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal).Select(key => new TableEntry(key, kinds.GetValueOrDefault(key))).ToArray();
+            .Order(StringComparer.Ordinal).Select(key => new TableEntry(key, kinds.GetValueOrDefault(key), counts.GetValueOrDefault(key)
+                ?? ComparisonPresentation.Counts(Rows?.Where(d => d.ObjectType == "Table" && d.ObjectName == key) ?? []))).ToArray();
     }
 
     private bool IsVisible(DifferenceKind kind) => kind switch
@@ -124,22 +128,41 @@ public partial class Home
             if (Lifetime.IsCancellationRequested) return;
             if (Left.Snapshot is null || Right.Snapshot is null) { Error = "Both schemas must load successfully before comparison."; return; }
             var differences = SchemaComparer.Compare(Left.Snapshot, Right.Snapshot);
-            Script = MigrationGenerator.Generate(Left.Snapshot, Right.Snapshot);
             Rows = ComparisonPresentation.Expand(Left.Snapshot, Right.Snapshot, differences);
+            Selection = new(Rows);
             RefreshTables();
             SelectedTable = differences.FirstOrDefault(d => d.ObjectType == "Table" && d.Kind != DifferenceKind.Equal)?.ObjectName
                 ?? TableEntries.FirstOrDefault()?.Key;
             ActiveTab = "details";
             Logger.LogInformation("Compared {LeftCount} source tables and {RightCount} target tables; found {ChangeCount} object changes", Left.Snapshot.Tables.Count, Right.Snapshot.Tables.Count, ChangeCount);
         }
-        catch (Exception ex) { Logger.LogError(ex, "Comparison or SQL generation failed"); Error = "Comparison or SQL generation failed. Review schema metadata and server logs."; }
+        catch (Exception ex) { Logger.LogError(ex, "Comparison failed"); Error = "Comparison failed. Review schema metadata and server logs."; }
         finally { Busy = false; RefreshTables(); }
     }
+
+    private void GenerateSql()
+    {
+        if (Rows is null || Selection is null || Left.Snapshot is null || Right.Snapshot is null) return;
+        Script = null; Error = null; ActiveTab = "sql";
+        try
+        {
+            Script = MigrationGenerator.Generate(Left.Snapshot, Right.Snapshot, Selection.Snapshot());
+            Logger.LogInformation("Generated migration SQL for {SelectedChanges} selected changes", Selection.SelectedChangeCount);
+        }
+        catch (MigrationSelectionException ex) { Error = ex.Message; }
+        catch (Exception ex) { Logger.LogError(ex, "SQL generation failed"); Error = "SQL generation failed. Review the selection and server logs."; }
+    }
+
+    private void SelectionChanged() { Script = null; Error = null; }
+    private void ToggleTable(string key) { Selection?.SetTable(key, Selection.TableState(key) != true); SelectionChanged(); }
+    private void SetObject(SchemaDifference row, bool include) { Selection?.SetObject(row, include); SelectionChanged(); }
+    private void SetAllTables(bool include) { Selection?.SetAll(include); SelectionChanged(); }
+    private void SetAllDetails(bool include) { if (SelectedTable is not null) Selection?.SetTable(SelectedTable, include); SelectionChanged(); }
 
     private void SelectTable(string key) { SelectedTable = key; ActiveTab = "details"; }
     private void Swap() { (Left, Right) = (Right, Left); ClearComparison(); Error = null; }
     private void ConnectionChanged(ConnectionEditorState side) { side.Snapshot = null; side.Error = null; side.Notice = null; Error = null; ClearComparison(); }
-    private void ClearComparison() { Rows = null; Script = ""; SelectedTable = null; ActiveTab = "details"; RefreshTables(); }
+    private void ClearComparison() { Rows = null; Selection = null; Script = null; SelectedTable = null; ActiveTab = "details"; RefreshTables(); }
     public void Dispose() { Lifetime.Cancel(); Lifetime.Dispose(); }
-    private sealed record TableEntry(string Key, DifferenceKind? Kind);
+    private sealed record TableEntry(string Key, DifferenceKind? Kind, TableDifferenceCounts Counts);
 }

@@ -15,7 +15,13 @@ The local launch profile uses HTTP and the app has no authentication, as request
 
 ## Workspace
 
-Configure the left source and right target using the expandable connection panels. Load a schema to browse its table list, then use **Compare schemas** to refresh both sides and generate SQL. The table explorer supports search and independent result filters. Select a table to see side-by-side definitions in **Schema details**, or open **Migration SQL** to review and download the full script. Swapping sides clears the previous comparison so the next script follows the new direction.
+Configure the left source and right target using the expandable connection panels. Load a schema to browse its table list, then use **Compare schemas** to refresh both sides and compare them. SQL is generated only when you click **Generate SQL**.
+
+Each table shows mixed object counts: **D×** different, **R×** right only, and **L×** left only. Counts exclude equal objects and the table summary, so a changed column is counted once. They show the full comparison independently of visibility filters and migration selection.
+
+All tables and detail objects start checked. A table checkbox includes or excludes all its objects; a mixed checkbox means some objects are excluded. **Check all** and **Uncheck all** in the explorer apply to every table, including hidden results. The same buttons above the detail grid apply to every object in the current table. Filters change visibility only. Click **Generate SQL** to review and download the script for the current selection. Any selection change clears the previous script; comparison, connection edits, and swapping sides reset the selection and SQL.
+
+For one-sided tables, selecting the whole table creates or drops it. Partial selections create only the selected source columns/constraints/indexes, or remove only selected target objects while keeping the table. If a retained object needs an excluded or removed dependency, generation explains what else must be selected. Required rebuilds of unchanged foreign keys, constraints, or indexes also require their inclusion. The app never executes the script.
 
 ## Stage 1 behavior
 

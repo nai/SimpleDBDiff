@@ -22,6 +22,7 @@
     <div class="command-bar">
         <div class="command-actions">
             <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@(Busy || !CanCompare)" OnClick="CompareAsync">@(Busy ? "Loading schemas…" : "Compare schemas")</FluentButton>
+            <FluentButton Disabled="@(Busy || Selection is null || Selection.SelectedObjectCount == 0)" OnClick="GenerateSql">Generate SQL</FluentButton>
             <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Swap"><span class="swap-symbol" aria-hidden="true">⇄</span> Swap sides</FluentButton>
             @if (Busy) { <FluentSpinner aria-label="Loading schemas" /> }
         </div>
@@ -40,6 +41,14 @@
                 <FluentCheckbox Label="Left only" @bind-Value="ShowLeftOnly" />
                 <FluentCheckbox Label="Right only" @bind-Value="ShowRightOnly" />
             </fieldset>
+            @if (Selection is not null)
+            {
+                <div class="selection-tools table-selection-tools" aria-label="Table selection controls">
+                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(true)" Title="Check all tables and objects, including hidden results">Check all</FluentButton>
+                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllTables(false)" Title="Uncheck all tables and objects, including hidden results">Uncheck all</FluentButton>
+                    <span>All tables · filters only change visibility</span>
+                </div>
+            }
             <div class="table-navigation">
                 @if (TableEntries.Count == 0)
                 {
@@ -51,11 +60,25 @@
                 }
                 @foreach (var table in VisibleTables)
                 {
-                    <button type="button" class="table-entry @(SelectedTable == table.Key ? "selected" : "")" aria-pressed="@(SelectedTable == table.Key)" @onclick="() => SelectTable(table.Key)">
-                        <span class="table-glyph" aria-hidden="true">▦</span>
-                        <span class="table-entry-text"><strong>@table.Key</strong><span>@ComparisonPresentation.StatusLabel(table.Kind)</span></span>
-                        <span class="object-indicator @ComparisonPresentation.StatusClass(table.Kind)" aria-hidden="true"></span>
-                    </button>
+                    <div class="table-selection-entry @(SelectedTable == table.Key ? "selected" : "")">
+                        @if (Selection is not null)
+                        {
+                            <FluentCheckbox ThreeState="true" ShowIndeterminate="false" CheckState="@Selection.TableState(table.Key)" CheckStateChanged="_ => ToggleTable(table.Key)" AriaLabel="@($"Include table {table.Key} in migration")" />
+                        }
+                        <button type="button" class="table-entry" aria-pressed="@(SelectedTable == table.Key)" @onclick="() => SelectTable(table.Key)">
+                            <span class="table-entry-text"><strong>@table.Key</strong>
+                                @if (Rows is not null)
+                                {
+                                    <span class="table-counts" aria-label="@($"{table.Counts.Different} different, {table.Counts.RightOnly} right only, {table.Counts.LeftOnly} left only")">
+                                        <span class="different" title="Different objects">D×@table.Counts.Different</span>
+                                        <span class="right-only" title="Right-only objects">R×@table.Counts.RightOnly</span>
+                                        <span class="left-only" title="Left-only objects">L×@table.Counts.LeftOnly</span>
+                                    </span>
+                                }
+                                else { <span>Not compared</span> }
+                            </span>
+                        </button>
+                    </div>
                 }
             </div>
             <div class="explorer-footer">@VisibleTables.Count() of @TableEntries.Count tables</div>
@@ -81,6 +104,11 @@
                         @if (SelectedTable is not null)
                         {
                             <div class="comparison-direction"><span><b>L</b> @Left.Database <small>source</small></span><span><b>R</b> @Right.Database <small>target</small></span></div>
+                            <div class="selection-tools detail-selection-tools" aria-label="Detail selection controls">
+                                <span>Include in migration</span>
+                                <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllDetails(true)" Title="Check every object in this table, including hidden results">Check all</FluentButton>
+                                <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetAllDetails(false)" Title="Uncheck every object in this table, including hidden results">Uncheck all</FluentButton>
+                            </div>
                             @if (!SelectedRows.Any())
                             {
                                 <div class="detail-empty">No objects match the selected status filters. Enable another result type to see more.</div>
@@ -88,7 +116,8 @@
                             else
                             {
                                 <div class="detail-grid-scroll">
-                                    <FluentDataGrid TGridItem="SchemaDifference" Items="@SelectedRows.AsQueryable()" MultiLine="true" GridTemplateColumns="minmax(140px, 1fr) 100px minmax(0, 1.6fr) minmax(0, 1.6fr)" Class="schema-grid">
+                                    <FluentDataGrid TGridItem="SchemaDifference" Items="@SelectedRows.AsQueryable()" MultiLine="true" GridTemplateColumns="80px minmax(140px, 1fr) 112px minmax(0, 1.6fr) minmax(0, 1.6fr)" Class="schema-grid">
+                                        <TemplateColumn Title="Include" Context="row"><FluentCheckbox Value="@(Selection?.IsSelected(row) ?? false)" ValueChanged="(bool value) => SetObject(row, value)" AriaLabel="@($"Include {row.ObjectType.Split(' ')[0].ToLowerInvariant()} {row.ObjectName} in migration")" /></TemplateColumn>
                                         <TemplateColumn Title="Object" Context="row"><span class="object-name">@row.ObjectName</span><span class="object-type">@row.ObjectType.Split(' ')[0]</span></TemplateColumn>
                                         <TemplateColumn Title="Status" Context="row"><span class="status-badge @ComparisonPresentation.StatusClass(row.Kind)">@ComparisonPresentation.StatusLabel(row.Kind)</span></TemplateColumn>
                                         <TemplateColumn Title="Left · source" Context="row"><code class="definition @(row.LeftDefinition is null ? "missing" : "")">@(row.LeftDefinition ?? "Not present")</code></TemplateColumn>
@@ -99,12 +128,16 @@
                         }
                     </FluentTab>
                     <FluentTab Id="sql" Header="Migration SQL">
-                        <div class="detail-heading"><div><p class="eyebrow">POSTGRESQL SCRIPT</p><h2>Source → target</h2></div><a class="download-link" href="@ScriptDownload" download="migration.sql">Download .sql <span aria-hidden="true">↓</span></a></div>
+                        <div class="detail-heading"><div><p class="eyebrow">POSTGRESQL SCRIPT</p><h2>Source → target</h2></div>@if (Script is not null) { <a class="download-link" href="@ScriptDownload" download="migration.sql">Download .sql <span aria-hidden="true">↓</span></a> }</div>
                         <div class="script-note">Review before running. This script can drop objects or alter data types. The application does not execute it.</div>
-                        <pre class="sql-editor" tabindex="0" aria-label="Read-only PostgreSQL migration script"><code>@Script</code></pre>
+                        @if (Script is null)
+                        {
+                            <div class="sql-empty"><h2>Generate SQL for your selection</h2><p>Check the tables and objects you want to migrate, then click Generate SQL. Changing your selection clears the previous script.</p><FluentButton Appearance="ButtonAppearance.Primary" Disabled="@(Selection is null || Selection.SelectedObjectCount == 0)" OnClick="GenerateSql">Generate SQL</FluentButton></div>
+                        }
+                        else { <pre class="sql-editor" tabindex="0" aria-label="Read-only PostgreSQL migration script"><code>@Script</code></pre> }
                     </FluentTab>
                 </FluentTabs>
-                <div class="comparison-summary" role="status"><span><span class="status-dot"></span>Comparison complete</span><span>@ChangeCount object changes · @TableEntries.Count tables</span></div>
+                <div class="comparison-summary" role="status"><span><span class="status-dot"></span>Comparison complete</span><span>@(Selection?.SelectedChangeCount ?? 0) of @ChangeCount changes selected · @TableEntries.Count tables</span></div>
             }
         </section>
     </div>
