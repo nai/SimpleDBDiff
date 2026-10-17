@@ -13,7 +13,7 @@
 <header class="app-header">
     <a class="brand" href="/">SimpleDBDiff</a>
     <span class="direction-note">Left source → Right target</span>
-    <FluentButton OnClick="() => SessionsOpen = !SessionsOpen" Disabled="Busy">Sessions</FluentButton>
+    <FluentButton Id="sessions-toggle" @ref="SessionsButton" OnClick="() => SetSessionsOpenAsync(!SessionsOpen)" Disabled="Busy" aria-expanded="@SessionsOpen" aria-controls="sessions-dialog" aria-haspopup="dialog">Sessions</FluentButton>
     <span role="status">@SaveStatus</span>
     @if (SaveFailed) { <FluentButton OnClick="RetrySave" Disabled="Saving">Retry Save</FluentButton> }
     <span role="status">@(Vault.IsOpen ? "Vault open" : "Vault locked")</span>
@@ -26,28 +26,44 @@
             @if (Busy) { <FluentSpinner aria-label="Working" /> }
         </div>
 </header>
-@if (SessionsOpen)
-{
-    <section class="sessions-panel" aria-label="Saved comparison sessions">
-        <h2>Sessions</h2>
-        <FluentButton OnClick="NewSessionAsync" Disabled="@(Busy || Saving)">New Session</FluentButton>
-        @if (Sessions.Count == 0) { <p>No saved sessions. Create a session to save your workspace automatically.</p> }
-        @foreach (var session in Sessions)
-        {
-            <div class="session-row" @key="session.Id">
-                <FluentButton OnClick="() => LoadSessionAsync(session)" Disabled="@(Busy || Saving)">@session.Name</FluentButton>
-                <span>@session.Left.Database → @session.Right.Database</span>
-                <FluentButton OnClick="() => BeginRename(session)" Disabled="@(Busy || Saving)">Rename</FluentButton>
-                <FluentButton OnClick="() => DeleteSessionAsync(session)" Disabled="@(Busy || Saving)">Delete</FluentButton>
-            </div>
-        }
+<FluentPopover AnchorId="sessions-toggle" Opened="SessionsOpen" OpenedChanged="SetSessionsOpenAsync" Width="440px" OffsetVertical="6" Class="sessions-popup">
+    <section id="sessions-dialog" class="sessions-dialog" role="dialog" aria-labelledby="sessions-title" @onkeydown="SessionsKeyDownAsync">
+        <div class="sessions-heading">
+            <h2 id="sessions-title">Sessions</h2>
+            <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => SetSessionsOpenAsync(false)" AriaLabel="Close sessions">Close</FluentButton>
+        </div>
+        <div class="sessions-create"><FluentButton @ref="NewSessionButton" OnClick="NewSessionAsync" Disabled="@(Busy || Saving)">New Session</FluentButton></div>
+        @if (Sessions.Count == 0) { <p class="sessions-empty">No saved sessions. Create a session to save your workspace automatically.</p> }
+        <ul class="session-list" aria-label="Saved sessions">
+            @foreach (var session in Sessions)
+            {
+                var direction = $"{session.Left.Database} → {session.Right.Database}";
+                <li class="session-row" @key="session.Id">
+                    <div class="session-identity">
+                        <strong>@session.Name</strong>
+                        @if (direction != session.Name && (!string.IsNullOrWhiteSpace(session.Left.Database) || !string.IsNullOrWhiteSpace(session.Right.Database)))
+                        { <span>@direction</span> }
+                    </div>
+                    <div class="session-actions">
+                        <FluentButton OnClick="() => LoadSessionAsync(session)" Disabled="@(Busy || Saving)" AriaLabel="@($"Load session {session.Name}")">Load</FluentButton>
+                        <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => BeginRename(session)" Disabled="@(Busy || Saving)" AriaLabel="@($"Rename session {session.Name}")">Rename</FluentButton>
+                        <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => DeleteSessionAsync(session)" Disabled="@(Busy || Saving)" AriaLabel="@($"Delete session {session.Name}")">Delete</FluentButton>
+                    </div>
+                </li>
+            }
+        </ul>
         @if (RenameId is not null)
         {
-            <FluentTextInput Label="Session name" @bind-Value="RenameName" />
-            <FluentButton OnClick="RenameSessionAsync" Disabled="@(Busy || Saving)">Save name</FluentButton>
+            <div class="session-rename">
+                <FluentTextInput @ref="SessionNameInput" Label="Session name" @bind-Value="RenameName" Width="100%" />
+                <div class="session-actions">
+                    <FluentButton OnClick="RenameSessionAsync" Disabled="@(Busy || Saving)">Save name</FluentButton>
+                    <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => RenameId = null">Cancel</FluentButton>
+                </div>
+            </div>
         }
     </section>
-}
+</FluentPopover>
 @if (PendingSession is not null)
 {
     <section class="sessions-panel" aria-label="Session passwords">

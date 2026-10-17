@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.FluentUI.AspNetCore.Components;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SimpleDBDiff.Shared.Services;
@@ -6,6 +9,27 @@ namespace SimpleDBDiff.Shared.Components.Pages;
 
 public partial class Home
 {
+    private FluentButton SessionsButton = default!;
+    private FluentButton NewSessionButton = default!;
+    private FluentTextInput SessionNameInput = default!;
+    private bool FocusSessionMenu, FocusSessionName;
+
+    private async Task SetSessionsOpenAsync(bool opened)
+    {
+        if (SessionsOpen == opened) return;
+        SessionsOpen = opened;
+        if (opened) FocusSessionMenu = true;
+        else
+        {
+            RenameId = null;
+            FocusSessionMenu = FocusSessionName = false;
+            await SessionsButton.Element.FocusAsync();
+        }
+    }
+
+    private Task SessionsKeyDownAsync(KeyboardEventArgs args) => args.Key == "Escape"
+        ? SetSessionsOpenAsync(false) : Task.CompletedTask;
+
     private ComparisonSession CaptureSession()
     {
         var name = ActiveSession!.Renamed ? ActiveSession.Name :
@@ -20,6 +44,16 @@ public partial class Home
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (SessionsOpen && FocusSessionMenu)
+        {
+            FocusSessionMenu = false;
+            if (!Busy && !Saving) await NewSessionButton.Element.FocusAsync();
+        }
+        if (SessionsOpen && FocusSessionName && RenameId is not null)
+        {
+            FocusSessionName = false;
+            await SessionNameInput.Element.FocusAsync();
+        }
         if (ActiveSession is null || Restoring || Saving) return;
         var next = CaptureSession();
         var payload = JsonSerializer.Serialize(next);
@@ -45,7 +79,7 @@ public partial class Home
         ClearComparison(); PendingSession = null;
         ActiveSession = new(Guid.NewGuid().ToString("N"), $"Session {Sessions.Count + 1}", false,
             SessionConnection.From(Left), SessionConnection.From(Right), new("", true,true,true,true), null, DateTimeOffset.UtcNow);
-        LastSavedPayload = LastAttemptedPayload = null; SessionsOpen = false; SaveStatus = "Saving…";
+        LastSavedPayload = LastAttemptedPayload = null; await SetSessionsOpenAsync(false); SaveStatus = "Saving…";
         await Task.CompletedTask;
     }
     private async Task LoadSessionAsync(ComparisonSession session)
@@ -59,7 +93,7 @@ public partial class Home
             Search = session.Filters.Search; ShowEqual = session.Filters.Equal; ShowDifferent = session.Filters.Different;
             ShowLeftOnly = session.Filters.LeftOnly; ShowRightOnly = session.Filters.RightOnly;
             ActiveSession = PendingSession = session; LastSavedPayload = JsonSerializer.Serialize(session); LastAttemptedPayload = null;
-            SaveStatus = "Session loaded · awaiting connections"; SessionsOpen = false;
+            SaveStatus = "Session loaded · awaiting connections"; await SetSessionsOpenAsync(false);
             await RetrieveSessionPasswordsAsync();
             if (Vault.IsOpen && HasMatchingSavedPassword(Left) && HasMatchingSavedPassword(Right))
                 await ContinueSessionAsync();
@@ -91,7 +125,7 @@ public partial class Home
         }
         finally { Busy = Restoring = false; RefreshTables(); }
     }
-    private void BeginRename(ComparisonSession session) { RenameId = session.Id; RenameName = session.Name; }
+    private void BeginRename(ComparisonSession session) { RenameId = session.Id; RenameName = session.Name; FocusSessionName = true; }
     private async Task RenameSessionAsync()
     {
         if (string.IsNullOrWhiteSpace(RenameName)) { Error = "Enter a session name."; return; }

@@ -156,8 +156,21 @@ table.schema-grid { min-width: 780px; }
 .app-header { height: auto; min-height: 58px; flex-wrap: wrap; gap: 12px; padding-block: 8px; }
 .review-marker { display: block; color: #8a5200; font-size: 11px; }
 .connection-controls small { font-size: 10px; }
-.session-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 0; }
-.session-row > span { flex: 1; overflow-wrap: anywhere; }
 .session-hint { margin: 0 0 10px; font-size: 12px; color: #616161; }
 
 .card-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+
+/* The native Fluent popover occupies the top layer without moving the page. */
+.sessions-popup { max-width: calc(100vw - 24px); padding: 0; overflow: hidden; }
+.sessions-dialog { display: flex; flex-direction: column; max-height: min(480px, calc(100dvh - 100px)); min-height: 0; }
+.sessions-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px 4px; }
+.sessions-heading h2 { font-size: 16px; }
+.sessions-create { padding: 4px 14px 10px; }
+.sessions-empty { padding: 0 14px 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.session-list { list-style: none; margin: 0; padding: 0 14px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.session-row { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--border); }
+.session-identity { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.session-identity strong { font-size: 13px; font-weight: 600; }
+.session-identity > span { font-size: 11px; color: var(--muted); }
+.session-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.session-rename { padding: 12px 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }

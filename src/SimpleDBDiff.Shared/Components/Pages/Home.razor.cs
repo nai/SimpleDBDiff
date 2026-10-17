@@ -19,7 +19,7 @@ public partial class Home
     private string ActiveTab = "details";
     private bool Busy;
     private bool VaultPanel;
-    private bool SessionsOpen = true;
+    private bool SessionsOpen;
     private IReadOnlyList<ComparisonSession> Sessions = [];
     private ComparisonSession? ActiveSession;
     private ComparisonSession? PendingSession;
