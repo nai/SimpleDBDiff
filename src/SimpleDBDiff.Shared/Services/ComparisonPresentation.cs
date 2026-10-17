@@ -1,6 +1,6 @@
 using SimpleDBDiff.Core;
 
-namespace SimpleDBDiff.Web.Services;
+namespace SimpleDBDiff.Shared.Services;
 
 // One-sided tables have a single comparison result. Expand their metadata for the detail view.
 public static class ComparisonPresentation

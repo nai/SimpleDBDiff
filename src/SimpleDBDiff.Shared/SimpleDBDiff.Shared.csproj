@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+<PropertyGroup><TargetFramework>net11.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+<ItemGroup><ProjectReference Include="../SimpleDBDiff.Core/SimpleDBDiff.Core.csproj"/><ProjectReference Include="../SimpleDBDiff.Postgres/SimpleDBDiff.Postgres.csproj"/>
+<PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="11.0.0-rc.1.26425.128"/><PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="5.0.1"/><PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12"/></ItemGroup>
+</Project>

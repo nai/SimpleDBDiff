@@ -11,7 +11,7 @@ public sealed class PostgresIntegrationTests
     private static string? LeftConnection => Environment.GetEnvironmentVariable("SIMPLEDBDIFF_TEST_LEFT");
     private static string? RightConnection => Environment.GetEnvironmentVariable("SIMPLEDBDIFF_TEST_RIGHT");
 
-    [Fact]
+    [PostgresFact]
     public async Task LoadsDifferentSchemasAndGeneratedSqlMakesTargetMatchSource()
     {
         if (LeftConnection is null || RightConnection is null) return;
@@ -46,7 +46,7 @@ public sealed class PostgresIntegrationTests
         Assert.Contains("DROP TABLE \"sdd_it\".\"categories\"", Generator.Generate(after with { Tables = [] }, after));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task InvalidDatabaseConnectionIsReported()
     {
         if (LeftConnection is null) return;
@@ -54,7 +54,7 @@ public sealed class PostgresIntegrationTests
         await Assert.ThrowsAsync<PostgresException>(() => Reader.LoadAsync(invalid.ConnectionString));
     }
 
-    [Fact]
+    [PostgresFact]
     public async Task UnsupportedPartitionMetadataFailsClearly()
     {
         if (LeftConnection is null) return;

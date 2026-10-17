@@ -1,5 +1,5 @@
 using SimpleDBDiff.Web.Components;
-using SimpleDBDiff.Web.Services;
+using SimpleDBDiff.Shared.Services;
 using SimpleDBDiff.Core;
 using SimpleDBDiff.Postgres;
 using Microsoft.FluentUI.AspNetCore.Components;
@@ -13,7 +13,10 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, ".data", "blazor-keys")));
 builder.Services.AddHttpClient();
 builder.Services.AddFluentUIComponents();
-builder.Services.AddSingleton<ConnectionProfileStore>();
+builder.Services.AddSingleton<IWorkspaceStorage>(new SqliteWorkspaceStorage(Path.Combine(builder.Environment.ContentRootPath, ".data", "profiles.db")));
+builder.Services.AddSingleton<ComparisonSessionStore>();
+builder.Services.AddScoped<PasswordVault>();
+builder.Services.AddScoped<ConnectionProfileStore>();
 builder.Services.AddSingleton<ISchemaReader, PostgresSchemaReader>();
 builder.Services.AddSingleton<IMigrationGenerator, PostgresMigrationGenerator>();
 builder.Logging.AddJsonConsole();
@@ -27,6 +30,7 @@ if (!app.Environment.IsDevelopment())
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
+    .AddAdditionalAssemblies(typeof(SimpleDBDiff.Shared.Components.Pages.Home).Assembly)
     .AddInteractiveServerRenderMode();
 
 app.Run();
