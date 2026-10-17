@@ -11,20 +11,27 @@
 <PageTitle>SimpleDBDiff</PageTitle>
 
 <header class="app-header">
-    <a class="brand" href="/">SimpleDBDiff</a>
-    <span class="direction-note">Left source → Right target</span>
-    <FluentButton Id="sessions-toggle" @ref="SessionsButton" OnClick="() => SetSessionsOpenAsync(!SessionsOpen)" Disabled="Busy" aria-expanded="@SessionsOpen" aria-controls="sessions-dialog" aria-haspopup="dialog">Sessions</FluentButton>
-    <span role="status">@SaveStatus</span>
-    @if (SaveFailed) { <FluentButton OnClick="RetrySave" Disabled="Saving">Retry Save</FluentButton> }
-    <span role="status">@(Vault.IsOpen ? "Vault open" : "Vault locked")</span>
-    <FluentButton Disabled="Busy" OnClick="() => VaultPanel = !VaultPanel">Open Vault</FluentButton>
-    <FluentButton Disabled="@(!Vault.IsOpen || Busy)" OnClick="CloseVault">Close Vault</FluentButton>
-        <div class="command-actions">
-            <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@(Busy || !CanCompare)" OnClick="CompareAsync">Compare schemas</FluentButton>
-            <FluentButton Disabled="@(Busy || !CanCompare || Selection is null || Selection.SelectedObjectCount == 0)" OnClick="GenerateSql">Generate SQL</FluentButton>
-            <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Swap"><span class="swap-symbol" aria-hidden="true">⇄</span> Swap sides</FluentButton>
-            @if (Busy) { <FluentSpinner aria-label="Working" /> }
+    <div class="workspace-identity">
+        <a class="brand" href="/">SimpleDBDiff</a>
+        <span class="direction-note">Left source → Right target</span>
+    </div>
+    <div class="workspace-utilities" role="group" aria-label="Workspace tools">
+        <div class="session-controls">
+            <FluentButton Id="sessions-toggle" @ref="SessionsButton" OnClick="() => SetSessionsOpenAsync(!SessionsOpen)" Disabled="Busy" aria-expanded="@SessionsOpen" aria-controls="sessions-dialog" aria-haspopup="dialog">Sessions</FluentButton>
+            <div class="current-session">
+                <strong title="@(ActiveSession?.Name ?? "No session selected")">@(ActiveSession?.Name ?? "No session selected")</strong>
+                <span role="status" title="@SaveStatus" class="@(SaveFailed ? "save-error" : "")">@CompactSaveStatus</span>
+            </div>
+            @if (SaveFailed) { <FluentButton OnClick="RetrySave" Disabled="Saving">Retry Save</FluentButton> }
         </div>
+        <FluentButton Class="vault-toggle" Disabled="Busy" OnClick="ToggleVaultPanel" title="@(Vault.IsOpen ? "Close the vault and clear passwords held in memory" : "Open the shared password vault")">@(Vault.IsOpen ? "Close Vault" : "Open Vault")</FluentButton>
+    </div>
+    <div class="command-actions" role="group" aria-label="Comparison actions">
+        <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@(Busy || !CanCompare)" OnClick="CompareAsync">Compare schemas</FluentButton>
+        <FluentButton Disabled="@(Busy || !CanCompare || Selection is null || Selection.SelectedObjectCount == 0)" OnClick="GenerateSql">Generate SQL</FluentButton>
+        <FluentButton Appearance="ButtonAppearance.Subtle" Disabled="Busy" OnClick="Swap"><span class="swap-symbol" aria-hidden="true">⇄</span> Swap sides</FluentButton>
+        @if (Busy) { <FluentSpinner aria-label="Working" /> }
+    </div>
 </header>
 <FluentPopover AnchorId="sessions-toggle" Opened="SessionsOpen" OpenedChanged="SetSessionsOpenAsync" Width="440px" OffsetVertical="6" Class="sessions-popup">
     <section id="sessions-dialog" class="sessions-dialog" role="dialog" aria-labelledby="sessions-title" @onkeydown="SessionsKeyDownAsync">
@@ -95,12 +102,14 @@
     <div class="comparison-workspace" aria-busy="@Busy">
         <aside class="object-explorer" aria-label="Table explorer">
             <div class="explorer-heading"><h2>Tables</h2><span class="count-badge">@TableEntries.Count</span></div>
-            <div class="explorer-search"><FluentTextInput AriaLabel="Find a table" Placeholder="Search schemas and tables" @bind-Value="Search" Immediate="true" Width="100%" TextInputType="TextInputType.Search" /></div>
-            <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => FiltersOpen = !FiltersOpen" aria-expanded="@FiltersOpen">Filters</FluentButton>
+            <div class="explorer-toolbar">
+                <FluentTextInput AriaLabel="Find a table" Placeholder="Search tables" @bind-Value="Search" Immediate="true" Width="100%" TextInputType="TextInputType.Search" />
+                <FluentButton Appearance="ButtonAppearance.Subtle" OnClick="() => FiltersOpen = !FiltersOpen" aria-expanded="@FiltersOpen" aria-controls="table-status-filters">Filters</FluentButton>
+            </div>
             @if (FiltersOpen)
             {
-            <fieldset class="status-filters">
-                <legend>Show results</legend>
+            <fieldset id="table-status-filters" class="status-filters">
+                <legend class="sr-only">Table status filters</legend>
                 <FluentCheckbox Label="Equal" @bind-Value="ShowEqual" />
                 <FluentCheckbox Label="Different" @bind-Value="ShowDifferent" />
                 <FluentCheckbox Label="Left only" @bind-Value="ShowLeftOnly" />

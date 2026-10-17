@@ -2,9 +2,13 @@
 
 The portable .NET 11 workspace builds successfully. Automated checks cover comparison and migration logic, shared-vault encryption and locking, SQLite session persistence, password exclusion from session DTOs, loaded-snapshot comparison, connection-edit invalidation, refresh reconciliation, and reporting successful save with failed connection.
 
-Headless Chromium checked New Session autosave, vault open/close, Filters expansion, saved-session listing after reload without automatically loading it, manual password collection on session load, and desktop widths of 1440 and 900 pixels. No page JavaScript errors or horizontal overflow occurred in those checks. These checks used the web host, not a native MAUI WebView.
+The layout revision passed all 29 automated tests, including the seven real PostgreSQL integration cases using the prepared local source and target test databases. The portable web build succeeded with zero warnings and zero errors.
 
-The seven PostgreSQL integration cases require `SIMPLEDBDIFF_TEST_LEFT` and `SIMPLEDBDIFF_TEST_RIGHT`. This environment has neither setting and no running/cached local PostgreSQL container, so the cases were skipped. The existing fixture SQL is under `tests/fixtures`. No real-database verification is claimed for this run.
+Headless Chromium checked the anchored Sessions popup with 30 saved sessions: closed on startup without loading a session, keyboard opening, initial focus, Escape dismissal, focus return, rename focus, a scrollable list, and session-name deduplication. It also loaded a saved session against real PostgreSQL, compared fresh schemas, generated SQL on demand, and confirmed that status filtering and searching changed neither migration choices nor generated SQL. The single vault button changed between Open Vault and Close Vault, and closing kept loaded results visible.
+
+Rendered layout checks passed at widths of 1440, 1100, 900, 700, 640, 600, and 375 pixels: app-bar controls remained visible without horizontal overflow, search and Filters shared one row, the popup fit the viewport, and page scrolling worked. These checks used the shared UI in the web host, not a native MAUI WebView.
+
+The unchanged connection editor's Fluent number input attempts to load IMask from an external CDN that was unavailable in this environment; opening that editor could therefore interrupt the Blazor circuit. The final layout checks left connection editors closed and exercised database loading through the session flow. This existing dependency remains outside the layout revision.
 
 The MAUI build was attempted and stopped with NETSDK1147 (missing workloads). The Linux host has no installed MAUI workload and cannot run Windows or Mac Catalyst. Native verification must be completed on a supported desktop before treating the desktop milestone as validated.
 

@@ -95,6 +95,16 @@ public partial class Home
         finally { Busy = false; }
     }
 
+    private string CompactSaveStatus => ActiveSession is null ? "Choose a session"
+        : SaveFailed ? "Save failed" : Saving ? "Saving…"
+        : PendingSession is not null ? "Awaiting connections" : SaveStatus;
+
+    private void ToggleVaultPanel()
+    {
+        if (Vault.IsOpen) CloseVault();
+        else VaultPanel = !VaultPanel;
+    }
+
     private async Task OpenVaultAsync()
     {
         Busy = true;
